@@ -1,0 +1,3 @@
+passing_gaze,10
+cryotheum,10
+fragment,5

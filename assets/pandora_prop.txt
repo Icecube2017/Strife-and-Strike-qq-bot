@@ -1,0 +1,10 @@
+amethyst,10
+ascension_stair,10
+aurora_concussion,10
+hexastal,10
+octastal,10
+decastal,10
+fragment,10
+pandora_box,20
+damocles_sword, 5
+apollo_arrow,5
