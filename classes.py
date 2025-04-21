@@ -64,7 +64,8 @@ class Character:
         self.status_layers: Dict[str, int] = {} # 存储可堆叠状态的层数
         self.hidden_status: Dict[str, List[int]] = {} # 一些未写明是状态，但实际上依靠状态实现的效果
 
-        self.extra: List = [] # 储存额外数据
+        #self.extra: List = [] # 储存额外数据 已弃用，改为用
+        # hidden_status存放
 
 # 定义玩家类
 class Player:
@@ -254,7 +255,7 @@ class Action:
 
         #type=action
         self.is_aoe: bool = is_aoe # 群攻（对部分角色无效）
-        self.is_pierce: bool = is_pierce # 穿甲（无视护甲值）
+        self.is_pierce: bool = is_pierce # 无敌贯通（无视护甲，战斗续行）
         self.is_hplost: bool = False # 生命流失（无来源）
         self.is_void: bool = is_void # 实际不造成伤害
         self.is_track: bool = is_track # 无视闪避
@@ -323,10 +324,9 @@ class Game:
         self.character_status: Dict[str, int] = {}  # 角色状态（0=可用,1=被占用,2=禁用）
         self.ban_num: int = 1 # ban位个数
 
-        self.aurora_attack: Dict[str, int] = {} # 存储极光震荡触发时玩家的ATK
-
         # self.current_action: Action = 0
-        self.action_stack: List[Action] = []
+        self.action_stack: List[Action] = [] # 行动阶段的技能栈
+        self.action_stack_post: List[Action] = [] # 回合结束的技能栈
         self.skill_stack: List[Action] = []
         self.dice_stack: List = []
 
@@ -432,6 +432,10 @@ class Game:
     def remove_card(self, player_qq: str, card: str, remove_type: str = 'discard'):
         self.players[player_qq].card.remove(card)
 
+    @staticmethod
+    def has_tag(card: str, tag: str):
+        return True if tag in assets.TAG[card] else False
+
     def draw(self, player_qq: str, num: int):
         _ret = []
         for i in range(num):
@@ -467,9 +471,11 @@ class Game:
                 player.skill_status[CHARA_EXCLUSIVE[player.character.id]] = 0
             _c = self.draw(qq, 2) # 分发起始手牌
             if player.character.id == MAP['chinro']:
-                player.character.extra.append(0) # 晴箬的extra字段存储特质状态，0为未发动，1为发动
+                self.add_hidden_status(player.qq, 'encourage', -1) # 保存特质状态，0为未发动，1为发动
             if player.character.id == MAP['neko']:
                 self.play_trait(player.qq, trait=MAP['distinct_road']) # 妮卡欧“明晰的来时路”特质开局发动
+            if player.character.id == MAP['sumoggu']:
+                self.add_hidden_status(player.qq, 'alcohol', -1) # 保存酒水点数
         self.start_turn()
         _rst += self.player_info()
         return _rst
@@ -579,7 +585,7 @@ class Game:
                     _pl.character.status[status][0] += duration  # 储存持续回合数
                     _pl.character.status[status][1] += duration * self.player_count
                 except KeyError:
-                    _pl.character.status[status] = [0, 0]
+                    _pl.character.status[status] = [0, 0, 0]
                     _pl.character.status[status][0] = duration
                     _pl.character.status[status][1] = duration * self.player_count
                     if status == MAP['frozen']:
@@ -591,10 +597,11 @@ class Game:
                     elif status == MAP['strength_ii']:
                         self.add_attribute(player_qq, 'attack', 30)
                     elif status == MAP['exhausted']:
-                        self.aurora_attack[player_qq] = math.ceil(_pl.character.attack / 2)
-                        self.add_attribute(player_qq, 'attack', -(self.aurora_attack[player_qq]))
+                        self.add_attribute(player_qq, 'attack', -(_pl.character.hidden_status['aurora'][2]))
                     elif status == MAP['fragility']:
                         self.add_attribute(player_qq, 'defense', -15)
+                    elif status == MAP['weakness']:
+                        self.add_attribute(player_qq, 'attack', -15)
         else:
             pass
 
@@ -608,9 +615,12 @@ class Game:
         elif status == MAP['strength_ii']:
             self.add_attribute(player_qq, 'attack', -30)
         elif status == MAP['exhausted']:
-            self.add_attribute(player_qq, 'attack', self.aurora_attack[player_qq])
+            self.add_attribute(player_qq, 'attack', _pl.character.hidden_status['aurora'][2])
+            self.remove_hidden_status(player_qq, 'aurora')
         elif status == MAP['fragility']:
             self.add_attribute(player_qq, 'defense', 15)
+        elif status == MAP['weakness']:
+            self.add_attribute(player_qq, 'attack', 15)
 
     def add_hidden_status(self, player_qq: str, status: str, duration: int):
         _pl = self.players[player_qq]
@@ -619,7 +629,7 @@ class Game:
                 _pl.character.hidden_status[status][0] += duration
                 _pl.character.hidden_status[status][1] += duration * self.player_count
             except KeyError:
-                _pl.character.hidden_status[status] = [0, 0]
+                _pl.character.hidden_status[status] = [0, 0, 0]
                 _pl.character.hidden_status[status][0] = duration
                 _pl.character.hidden_status[status][1] = duration * self.player_count
                 if status == 'hero_legend':
@@ -783,6 +793,8 @@ class Game:
                             _aur_dice  = self.dice(_tgs.qq, 2, 1)
                             _ret += f'璀璨的极光四散而开，{_tgs.character.id} 的极光点数为 {_aur_dice} ！\n'
                             if _aur_dice == 1:
+                                self.add_hidden_status(_tgs.qq, 'aurora', -1)
+                                _tgs.character.hidden_status['aurora'][2] = math.ceil(_tgs.character.attack * 0.5)
                                 self.add_status(_tgs.qq, MAP['exhausted'], 1)
                 elif _c == MAP['mace']:
                     self.action_stack[0].damage_plus += 90
@@ -856,6 +868,8 @@ class Game:
                     self.action_stack[0].is_void = True
                 elif _c == MAP['arrow']:
                     self.action_stack[0].damage_plus += 50
+                elif _c == MAP['rapier']:
+                    self.add_attribute(player_qq, 'attack', 15)
                 elif _c == MAP['arctic_heart']:
                     _arc_sk = extra[ext_ind]
                     _pl.skill[_arc_sk] -= 1
@@ -947,8 +961,10 @@ class Game:
             target_qq_list = []
         _pl = self.players[player_qq]
         try:
-           _tg = self.players[target_qq_list[0]]
+            target_qq = target_qq_list[0]
+            _tg = self.players[target_qq_list[0]]
         except IndexError:
+            target_qq = None
             _tg = None
         _ret = ''
         _mp_cost = 0
@@ -961,13 +977,15 @@ class Game:
             _ret += f'特质被封印了哦\n'
         if _pl.has_hidden_status('non_flying'):
             _mp_cost += 1
-
+        if _pl.has_status(MAP['weakness']) and trait == MAP['decree']:
+            _trait_able = False
+            _ret += f'处于虚弱状态，无法布置律令哦\n'
         if _trait_able:
             if trait == MAP['tireless_observer'] and _pl.character.id == MAP['neko']:
                 _pl.skill[extra[0]] -= 1 # extra传入技能名字
-            if trait == MAP['distinct_road'] and _pl.character.id == MAP['neko']:
+            elif trait == MAP['distinct_road'] and _pl.character.id == MAP['neko']:
                 _s = self.choose_skill(player_qq)
-            if trait == MAP['lucky_shield'] and _pl.character.id == MAP['starduster']:
+            elif trait == MAP['lucky_shield'] and _pl.character.id == MAP['starduster']:
                 _star_dice = self.dice(player_qq, 6, 1)
                 _ret += f'星尘的幸运壁垒发动，幸运点数为 {_star_dice} ！\n'
                 if _star_dice in [1, 6]:
@@ -989,6 +1007,13 @@ class Game:
                 if _ice_dice in [1, 3, 6]:
                     self.add_status(_tg.qq, MAP['frozen'], 1)
                     _ret += f'{_tg.character.id} 被冻成冰雕了，无法行动！'
+            elif trait == MAP['im_drunk'] and _pl.character.id == MAP['sumoggu']:
+                _pl.character.hidden_status['alcohol'][2] += 0.4 * extra[0] # extra传入造成的伤害
+                if extra[0] >= 300:
+                    self.action_stack_post.append(Action(_tg, _pl, damage_point=round(_pl.character.hidden_status['alcohol'][2])))
+                    _pl.character.hidden_status['alcohol'][2] = 0
+                    self.add_status(player_qq, MAP['weakness'], 1)
+                    self.add_status(target_qq, MAP['nausea'], 2)
             elif trait == MAP['decree'] and _pl.character.id == MAP['sumoggu']:
                 _mp_cost += 1
                 if _pl.character.move_point < _mp_cost:
@@ -1080,7 +1105,7 @@ class Game:
                 self.play_trait(action.target.qq, trait=MAP['dont_forget_me'], extra=[1])
             if not action.target.has_status(MAP['confusion']):
                 if action.target.character.id == MAP['tussiu']:  # 图西乌特质结算
-                    action.damage_multi = 0
+                    action.damage_multi = 1
                     action.damage_plus = 0
                     if action.dice_point > 5:
                         action.dice_point = 5
@@ -1106,6 +1131,12 @@ class Game:
                 action.is_void = True
                 self.remove_status(action.target.qq, MAP['dodge'])
                 _act_ret += f'{action.target.character.id} 闪避了一次伤害!\n'
+            if action.source.has_status(MAP['nausea']):
+                _nau_dice = self.dice(action.source.qq, 6, 1)
+                _act_ret += f'{action.source.character.id} 感到一阵恶心，反胃点数为 {_nau_dice} ！'
+                if _nau_dice in [2, 4, 6]:
+                    action.is_void = True
+                    _act_ret += f'{action.source.character.id} 由于反胃，攻击没有击中目标…\n'
             if not action.is_void:
                 if action.is_pierce or action.target.has_status(MAP['fractured']) or action.is_penetrate:
                     action.target.character.hp -= action.damage_point
@@ -1113,6 +1144,8 @@ class Game:
                     damage(action)
                 if action.source.has_hidden_status('leeching'):
                     action.source.character.hidden_status['leeching'][2] += 0.5 * action.damage_point
+                if action.target.character.id == MAP['sumoggu']: # 长霾特质结算
+                    self.play_trait(action.target.qq, [action.source.qq], MAP['im_drunk'], [action.damage_point])
                 action.source.character.damage_dealt_total += action.damage_point  # 统计总伤和总承伤
                 action.target.character.damage_received_total += action.damage_point
                 action.source.character.damage_dealt_round += action.damage_point  # 统计每回合造成的总伤
@@ -1157,6 +1190,8 @@ class Game:
                 action.target.character.damage_received_total += action.damage_point
                 if action.source != EMPTY_PLAYER:
                     action.source.character.damage_dealt_total += action.damage_point
+                if action.target.character.id == MAP['sumoggu']:
+                    self.play_trait(action.target.qq, [action.source.qq], MAP['im_drunk'], [action.damage_point])
             return _dmg_ret
 
         def heal_event(action: Action):
@@ -1247,12 +1282,14 @@ class Game:
                 else:
                     _ret += self.player_died(_pl.qq)
 
-        for _pl in self.players.values():
-            if _pl.character.id == MAP['chinro'] and _pl.character.hp <= _pl.character.max_hp: # 晴箬特质结算
-                self.action_stack.append(
+        for _pl in self.players.values(): # 回合结束，玩家特质/技能结算
+            if (_pl.character.id == MAP['chinro'] and _pl.character.hp <= _pl.character.max_hp * 0.5
+                    and _pl.character.hidden_status['encourage'][2] == 0): # 晴箬特质结算
+                _pl.character.hidden_status['encourage'][2] = 1
+                self.action_stack_post.append(
                     Action(_pl, _pl, action_type='heal', damage_point=int(_pl.character.max_hp * 0.8) - _pl.character.hp))
-            if _pl.has_hidden_status('leeching'):
-                self.action_stack.append(
+            if _pl.has_hidden_status('leeching'): # 嗜血技能结算
+                self.action_stack_post.append(
                     Action(_pl, _pl, action_type='heal', damage_point=int(_pl.character.hidden_status['leeching'][2])))
 
         for _pl in self.players.values(): # 状态/隐藏状态持续时间-1
@@ -1278,12 +1315,12 @@ class Game:
             if _skill[_k] > 0:
                 _skill[_k] -= 1
 
-        for _a in self.action_stack: # 回合结束的一些特质结算
+        for _a in self.action_stack_post: # 回合结束的一些特质结算
             if _a.type == 'damage': # 结算冰火等造成的生命损失
                 _ret += damage_event(_a)
             elif _a.type == 'heal': # 结算治疗
                 _ret += heal_event(_a)
-        self.action_stack.clear()
+        self.action_stack_post.clear()
 
         _ret += '\n'
         if not _pl_now.has_hidden_status('extra'):

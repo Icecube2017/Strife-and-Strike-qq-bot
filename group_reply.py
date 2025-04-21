@@ -39,8 +39,8 @@ async def alias(api: BotAPI, message: GroupMessage, params):
         _word = _lst[0]
         _tag_cnt = ''
         for _c in assets.TAG[_word]:
-            _tag_cnt += f'{assets.MAP[_c]} '
-        _cnt = f'[SnS Aliases]\n{assets.MAP[_word]}：{assets.USAGE[_word]}\n标签： {_tag_cnt}\n====================\n已查询到以下别名:\n'
+            _tag_cnt += f'{_c} '
+        _cnt = f'[SnS Aliases]\n{_word}：{assets.USAGE[_word]}\n标签：{_tag_cnt}\n====================\n已查询到以下别名:\n'
         for i in range(0, len(assets.ALIAS[_word])):
             _cnt += f'({i+1}){assets.ALIAS[_word][i]}\n'
         await api.post_group_message(group_openid=message.group_openid ,content=_cnt,msg_id=message.id)
@@ -198,7 +198,7 @@ async def init(api: BotAPI, message: GroupMessage, params):
     _par_lst = params.split(sep=' ')
     game.new_game('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', 0)
     game.join_game('2410AB7265A435E36F39DC671B6D913A', '9C74E4EEE32610EAF5DFEC1C1C968660')
-    game.set_character('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', '时雨')
+    game.set_character('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', '图西乌')
     game.set_character('2410AB7265A435E36F39DC671B6D913A', '9C74E4EEE32610EAF5DFEC1C1C968660', '长霾')
     game.set_deck('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', 'test')
     _cnt = game.start_game('2410AB7265A435E36F39DC671B6D913A','7758FDF03BDCD44055806E9245E4F264')
