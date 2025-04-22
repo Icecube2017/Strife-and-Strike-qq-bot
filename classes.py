@@ -143,7 +143,7 @@ class Player:
         return True if skill in self.skill.keys() else False
 
     def has_trait(self, trait: str) -> bool: # 未完成
-        return True
+        return True if trait in assets.TRAIT[self.id] else False
 
     def set_character(self, c: list) -> str:  # 设置玩家角色
         self.character = Character(*c)
@@ -463,19 +463,21 @@ class Game:
         self.game_sequence = [i for i in range(1, self.player_count + 1)]
         # random.shuffle(self.game_sequence)
         _rst += "战斗开始！出牌顺序如下——\n"
-        for qq, player in self.players.items():  # 选择技能
-            if player.character.id not in [k for k in CHARA_EXCLUSIVE.keys()]:
+        for qq, _pl in self.players.items():  # 选择技能
+            if _pl.character.id not in [k for k in CHARA_EXCLUSIVE.keys()]:
                 _s1, _s2 = self.choose_skill(qq), self.choose_skill(qq)
             else:
-                player.skill[CHARA_EXCLUSIVE[player.character.id]] = 0
-                player.skill_status[CHARA_EXCLUSIVE[player.character.id]] = 0
+                _pl.skill[CHARA_EXCLUSIVE[_pl.character.id]] = 0
+                _pl.skill_status[CHARA_EXCLUSIVE[_pl.character.id]] = 0
             _c = self.draw(qq, 2) # 分发起始手牌
-            if player.character.id == MAP['chinro']:
-                self.add_hidden_status(player.qq, 'encourage', -1) # 保存特质状态，0为未发动，1为发动
-            if player.character.id == MAP['neko']:
-                self.play_trait(player.qq, trait=MAP['distinct_road']) # 妮卡欧“明晰的来时路”特质开局发动
-            if player.character.id == MAP['sumoggu']:
-                self.add_hidden_status(player.qq, 'alcohol', -1) # 保存酒水点数
+            if _pl.character.id == MAP['chinro']:
+                self.add_hidden_status(_pl.qq, 'encourage', -1) # 保存特质状态，0为未发动，1为发动
+            if _pl.character.id == MAP['neko']:
+                self.play_trait(_pl.qq, trait=MAP['distinct_road']) # 妮卡欧“明晰的来时路”特质开局发动
+            if _pl.character.id == MAP['darkstar']:
+                self.add_hidden_status(_pl.qq, 'massacre', -1)
+            if _pl.character.id == MAP['sumoggu']:
+                self.add_hidden_status(_pl.qq, 'alcohol', -1) # 保存酒水点数
         self.start_turn()
         _rst += self.player_info()
         return _rst
@@ -500,12 +502,7 @@ class Game:
         _ret = f"{_pl.character.id} 已阵亡……\n"
         self.died[player_qq] = _pl
         _pl.is_dead = True
-        if self.game_type == 0 and len(self.died) == len(self.players) - 1:
-            _ret += f'仅剩一人存活，游戏结束！'
-            for pl in self.players.values():
-                if not pl.is_dead:
-                    _ret += f'胜利者是 {pl.character.id} ！'
-            self.game_status = 2
+
         # self.players.pop(player_qq)
         return _ret
 
@@ -706,10 +703,10 @@ class Game:
             ext_ind = 0 # extra数据下标
             self.add_attribute(player_qq, 'move_point', -_cost)
             self.action_stack.append(Action(_tg, _pl, action_type='action')) # 事件栈入栈action实例
-            _pl.has_played_card = True
             for _c in cards:
                 if player_qq == target_qq and _c not in [MAP['curing'], MAP['regenerating']]:
                     return f'你不能对自己出牌哦'
+            _pl.has_played_card = True
             for _c in cards:
                 card_str += (_c + ' ')
             _ret += f'{_pl.character.id} 对 {_tg.character.id} 使用了 {card_str}！\n'
@@ -722,180 +719,185 @@ class Game:
                 self.remove_card(player_qq, _c) # 玩家手牌移除卡牌
                 self.discard.append(_c) # 出牌堆加入卡牌
             for _c in cards:
-                if _c == MAP['end_crystal']:
-                    _hp_dice = self.dice(player_qq, 4, 2)
-                    _dmg_dice = self.dice(player_qq, 8, 1)
-                    self.action_stack.append(Action(_pl, action_type='damage', damage_point=30 + 15 * _hp_dice))
-                    for _tgs in self.players.values():
-                        if _tgs != _pl:
-                            self.action_stack.append(Action(_tgs, _pl, action_type='damage', damage_type='magical',
-                                                            damage_point=40 + 15 * _dmg_dice, is_aoe=True))
-                    _ret += f'破片水晶的生命损失点数为 {_hp_dice} ，伤害点数为 {_dmg_dice} ！\n'
-                elif _c == MAP['hero_legend']:
-                    self.add_hidden_status(player_qq, 'hero_legend', -100)
-                    self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
-                elif _c == MAP['wood_sword']:
-                    self.add_attribute(player_qq, 'attack', 10)
-                elif _c == MAP['dream_shelter']:
-                    self.add_hidden_status(player_qq, 'dream_shelter', -100)
-                    self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
-                elif _c == MAP['shield']:
-                    self.add_attribute(player_qq, 'armor', 100)
-                    self.add_attribute(player_qq, 'defense', 5)
-                elif _c == MAP['ascension_stair']:
-                    _min_d = 100
-                    _max_d = 0
-                    tg_list: list[Player] = []
-                    for _tgs in self.players.values():
-                        _d = self.dice(_tgs.qq, 6, 1)
-                        _ret += f'混乱力场迸发，{_tgs.character.id} 的魔能点数为 {_d} ！\n'
-                        if _d < _min_d:
-                            _min_d = _d
-                            tg_list.clear()
-                            tg_list.append(_tgs)
-                        elif _d == _min_d:
-                            tg_list.append(_tgs)
-                        if _d > _max_d:
-                            _max_d = _d
-                    for _tgs2 in tg_list:
-                        self.action_stack.append(Action(_tgs2, _pl, action_type='damage', damage_type='magical',
-                                                        damage_point=50 * _max_d, is_aoe=True))
-                elif _c == MAP['critical_strike']:
-                    self.action_stack[0].is_pierce = True
-                elif _c == MAP['curing']:
-                    self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=120))
-                    self.action_stack[0].is_void = True
-                elif _c == MAP['regenerating']:
-                    self.add_status(player_qq, MAP['regeneration'], 2)
-                    self.action_stack[0].is_void = True
-                elif _c == MAP['strength_spell']:
-                    self.add_status(player_qq, MAP['strength'], 2)
-                elif _c == MAP['strength_spell_ii']:
-                    self.add_status(player_qq, MAP['strength_ii'], 2)
-                elif _c == MAP['hexastal']:
-                    self.action_stack[0].dice_size = 6
-                elif _c == MAP['octastal']:
-                    self.action_stack[0].dice_size = 8
-                elif _c == MAP['decastal']:
-                    self.action_stack[0].dice_size = 10
-                elif _c == MAP['chaotic_drill']:
-                    self.add_status(target_qq, MAP['confusion'], 1)
-                elif _c == MAP['fragment']:
-                    self.action_stack[0].damage_plus += 45
-                    self.draw(player_qq, 2)
-                elif _c == MAP['refreshment']:
-                    for _k in _pl.skill.keys():
-                        _pl.skill[_k] = 0
-                elif _c == MAP['aurora_concussion']:
-                    self.action_stack[0].is_void = True
-                    for _tgs in self.players.values():
-                        if _tgs != _pl:
-                            _aur_dice  = self.dice(_tgs.qq, 2, 1)
-                            _ret += f'璀璨的极光四散而开，{_tgs.character.id} 的极光点数为 {_aur_dice} ！\n'
-                            if _aur_dice == 1:
-                                self.add_hidden_status(_tgs.qq, 'aurora', -1)
-                                _tgs.character.hidden_status['aurora'][2] = math.ceil(_tgs.character.attack * 0.5)
-                                self.add_status(_tgs.qq, MAP['exhausted'], 1)
-                elif _c == MAP['mace']:
-                    self.action_stack[0].damage_plus += 90
-                    self.add_status(target_qq, MAP['fractured'], 2)
-                elif _c == MAP['redstone']:
-                    _stat = random.choice(list(_tg.character.status.keys()))
-                    self.add_status(target_qq, _stat, 1)
-                    _ret += f'{_tg.character.id} 的 {_stat} 效果被延长了…\n'
-                elif _c == MAP['nano_permeation']:
-                    self.add_hidden_status(player_qq, 'nano', 1)
-                elif _c == MAP['filching']:
-                    self.action_stack[0].is_void = True
-                    fil_card = random.choice(_tg.card)
-                    self.remove_card(target_qq, fil_card)
-                    self.add_card(player_qq, fil_card)
-                elif _c == MAP['declaration']:
-                    _card_str = ''
-                    for _card in _tg.card:
-                        _card_str += f'{_card} '
-                    _skill_str = ''
-                    for _skill in _tg.skill.keys():
-                        _skill_str += f'{_skill} '
-                        if _tg.skill_status[_skill] == 0:
-                            _tg.skill_status[_skill] = 1
-                    rem_card = random.choice(_tg.card)
-                    self.remove_card(target_qq, rem_card)
-                    _ret += f'{_tg.character.id} 的手牌有 {_card_str}，技能有 {_skill_str}！\n{rem_card} 被弃置了！\n'
-                elif _c == MAP['hologram']:
-                    _skill = self.choose_skill(player_qq)
-                    _pl.skill_status[_skill] = 2
-                    self.action_stack[0].is_void = True
-                elif _c == MAP['pyrotheum']:
-                    self.add_status(target_qq, MAP['flaming'], 3)
-                elif _c == MAP['passing_gaze']:
-                    self.action_stack[0].damage_plus += 100
-                    self.add_status(target_qq, MAP['dissociated'], 1)
-                elif _c == MAP['cryotheum']:
-                    self.add_status(target_qq, MAP['frost'], 2)
-                elif _c == MAP['corrupt_pendant']:
-                    self.add_attribute(player_qq, 'attack', 5)
-                    self.add_attribute(target_qq, 'attack', -5)
-                    self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=60))
-                    self.action_stack.append(Action(_tg, _pl, action_type='damage', damage_point=60))
-                elif _c == MAP['heart_locket']:
-                    self.add_attribute(player_qq, 'defense', 10)
-                elif _c == MAP['amethyst']:
-                    _ame_dice = self.dice(player_qq, 2, 1)
-                    _ret += f'折射水晶闪耀，{_pl.character.id} 的折射点数为 {_ame_dice} ！\n'
-                    if _ame_dice == 1:
-                        self.action_stack[0].damage_plus += 80
-                    elif _ame_dice == 2:
-                        self.action_stack[0].damage_plus -= 40
-                elif _c == MAP['bow']:
-                    self.add_hidden_status(player_qq,'bow', 1) # 见 Line 852 后于残片结算
-                elif _c == MAP['track']:
-                    if _tg.has_status(MAP['dodge']):
+                card_able = True
+                if card_able:
+                    if _c == MAP['end_crystal']:
+                        _hp_dice = self.dice(player_qq, 4, 2)
+                        _dmg_dice = self.dice(player_qq, 8, 1)
+                        self.action_stack.append(Action(_pl, action_type='damage', damage_point=30 + 15 * _hp_dice))
+                        for _tgs in self.players.values():
+                            if _tgs != _pl:
+                                self.action_stack.append(Action(_tgs, _pl, action_type='damage', damage_type='magical',
+                                                                damage_point=40 + 15 * _dmg_dice, is_aoe=True))
+                        _ret += f'破片水晶的生命损失点数为 {_hp_dice} ，伤害点数为 {_dmg_dice} ！\n'
+                    elif _c == MAP['hero_legend']:
+                        self.add_hidden_status(player_qq, 'hero_legend', -100)
+                        self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
+                    elif _c == MAP['wood_sword']:
+                        self.add_attribute(player_qq, 'attack', 10)
+                    elif _c == MAP['dream_shelter']:
+                        self.add_hidden_status(player_qq, 'dream_shelter', -100)
+                        self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
+                    elif _c == MAP['shield']:
+                        self.add_attribute(player_qq, 'armor', 100)
+                        self.add_attribute(player_qq, 'defense', 5)
+                    elif _c == MAP['ascension_stair']:
+                        _min_d = 100
+                        _max_d = 0
+                        tg_list: list[Player] = []
+                        for _tgs in self.players.values():
+                            _d = self.dice(_tgs.qq, 6, 1)
+                            _ret += f'混乱力场迸发，{_tgs.character.id} 的魔能点数为 {_d} ！\n'
+                            if _d < _min_d:
+                                _min_d = _d
+                                tg_list.clear()
+                                tg_list.append(_tgs)
+                            elif _d == _min_d:
+                                tg_list.append(_tgs)
+                            if _d > _max_d:
+                                _max_d = _d
+                        for _tgs2 in tg_list:
+                            self.action_stack.append(Action(_tgs2, _pl, action_type='damage', damage_type='magical',
+                                                            damage_point=50 * _max_d, is_aoe=True))
+                    elif _c == MAP['critical_strike']:
+                        self.action_stack[0].is_pierce = True
+                    elif _c == MAP['curing']:
+                        self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=120))
+                        self.action_stack[0].is_void = True
+                    elif _c == MAP['regenerating']:
+                        self.add_status(player_qq, MAP['regeneration'], 2)
+                        self.action_stack[0].is_void = True
+                    elif _c == MAP['strength_spell']:
+                        self.add_status(player_qq, MAP['strength'], 2)
+                    elif _c == MAP['strength_spell_ii']:
+                        self.add_status(player_qq, MAP['strength_ii'], 2)
+                    elif _c == MAP['hexastal']:
+                        self.action_stack[0].dice_size = 6
+                    elif _c == MAP['octastal']:
+                        self.action_stack[0].dice_size = 8
+                    elif _c == MAP['decastal']:
+                        self.action_stack[0].dice_size = 10
+                    elif _c == MAP['chaotic_drill']:
+                        self.add_status(target_qq, MAP['confusion'], 1)
+                    elif _c == MAP['fragment']:
+                        self.action_stack[0].damage_plus += 45
+                        self.draw(player_qq, 2)
+                    elif _c == MAP['refreshment']:
+                        for _k in _pl.skill.keys():
+                            _pl.skill[_k] = 0
+                    elif _c == MAP['aurora_concussion']:
+                        self.action_stack[0].is_void = True
+                        for _tgs in self.players.values():
+                            if _tgs != _pl:
+                                _aur_dice = self.dice(_tgs.qq, 2, 1)
+                                _ret += f'璀璨的极光四散而开，{_tgs.character.id} 的极光点数为 {_aur_dice} ！\n'
+                                if _aur_dice == 1:
+                                    self.add_hidden_status(_tgs.qq, 'aurora', -1)
+                                    _tgs.character.hidden_status['aurora'][2] = math.ceil(_tgs.character.attack * 0.5)
+                                    self.add_status(_tgs.qq, MAP['exhausted'], 1)
+                    elif _c == MAP['mace']:
+                        self.action_stack[0].damage_plus += 90
+                        self.add_status(target_qq, MAP['fractured'], 2)
+                    elif _c == MAP['redstone']:
+                        _stat = random.choice(list(_tg.character.status.keys()))
+                        self.add_status(target_qq, _stat, 1)
+                        _ret += f'{_tg.character.id} 的 {_stat} 效果被延长了…\n'
+                    elif _c == MAP['nano_permeation']:
+                        self.add_hidden_status(player_qq, 'nano', 1)
+                    elif _c == MAP['filching']:
+                        self.action_stack[0].is_void = True
+                        fil_card = random.choice(_tg.card)
+                        self.remove_card(target_qq, fil_card)
+                        self.add_card(player_qq, fil_card)
+                    elif _c == MAP['declaration']:
+                        _card_str = ''
+                        for _card in _tg.card:
+                            _card_str += f'{_card} '
+                        _skill_str = ''
+                        for _skill in _tg.skill.keys():
+                            _skill_str += f'{_skill} '
+                            if _tg.skill_status[_skill] == 0:
+                                _tg.skill_status[_skill] = 1
+                        rem_card = random.choice(_tg.card)
+                        self.remove_card(target_qq, rem_card)
+                        _ret += f'{_tg.character.id} 的手牌有 {_card_str}，技能有 {_skill_str}！\n{rem_card} 被弃置了！\n'
+                    elif _c == MAP['hologram']:
+                        _skill = self.choose_skill(player_qq)
+                        _pl.skill_status[_skill] = 2
+                        self.action_stack[0].is_void = True
+                    elif _c == MAP['pyrotheum']:
+                        self.add_status(target_qq, MAP['flaming'], 3)
+                    elif _c == MAP['passing_gaze']:
+                        self.action_stack[0].damage_plus += 100
+                        self.add_status(target_qq, MAP['dissociated'], 1)
+                    elif _c == MAP['cryotheum']:
+                        self.add_status(target_qq, MAP['frost'], 2)
+                    elif _c == MAP['corrupt_pendant']:
+                        self.add_attribute(player_qq, 'attack', 5)
+                        self.add_attribute(target_qq, 'attack', -5)
+                        self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=60))
+                        self.action_stack.append(Action(_tg, _pl, action_type='damage', damage_point=60))
+                    elif _c == MAP['heart_locket']:
+                        self.add_attribute(player_qq, 'defense', 10)
+                    elif _c == MAP['amethyst']:
+                        _ame_dice = self.dice(player_qq, 2, 1)
+                        _ret += f'折射水晶闪耀，{_pl.character.id} 的折射点数为 {_ame_dice} ！\n'
+                        if _ame_dice == 1:
+                            self.action_stack[0].damage_plus += 80
+                        elif _ame_dice == 2:
+                            self.action_stack[0].damage_plus -= 40
+                    elif _c == MAP['bow']:
+                        self.add_hidden_status(player_qq, 'bow', 1)  # 见 Line 852 后于残片结算
+                    elif _c == MAP['track']:
+                        if _tg.has_status(MAP['dodge']):
+                            self.action_stack[0].damage_multi *= 1.5
+                            self.action_stack[0].is_track = True
+                    elif _c == MAP['penetrate']:
+                        if _tg.character.armor != 0:
+                            self.action_stack[0].damage_multi *= 1.5
+                            self.action_stack[0].is_penetrate = True
+                    elif _c == MAP['end_halberd']:
                         self.action_stack[0].damage_multi *= 1.5
-                        self.action_stack[0].is_track = True
-                elif _c == MAP['penetrate']:
-                    if _tg.character.armor != 0:
-                        self.action_stack[0].damage_multi *= 1.5
-                        self.action_stack[0].is_penetrate = True
-                elif _c == MAP['end_halberd']:
-                    self.action_stack[0].damage_multi *= 1.5
-                elif _c == MAP['slowness_spell']:
-                    self.add_status(target_qq, MAP['slowness'], 2)
-                elif _c == MAP['swift_spell']:
-                    self.add_status(player_qq, MAP['swift'], 3)
-                elif _c == MAP['invisibility_spell']:
-                    self.add_status(player_qq, MAP['dodge'], -1)
-                    self.action_stack[0].is_void = True
-                elif _c == MAP['arrow']:
-                    self.action_stack[0].damage_plus += 50
-                elif _c == MAP['rapier']:
-                    self.add_attribute(player_qq, 'attack', 15)
-                elif _c == MAP['arctic_heart']:
-                    _arc_sk = extra[ext_ind]
-                    _pl.skill[_arc_sk] -= 1
-                    ext_ind += 1
+                    elif _c == MAP['slowness_spell']:
+                        self.add_status(target_qq, MAP['slowness'], 2)
+                    elif _c == MAP['swift_spell']:
+                        self.add_status(player_qq, MAP['swift'], 3)
+                    elif _c == MAP['invisibility_spell']:
+                        self.add_status(player_qq, MAP['dodge'], -1)
+                        self.action_stack[0].is_void = True
+                    elif _c == MAP['arrow']:
+                        self.action_stack[0].damage_plus += 50
+                    elif _c == MAP['rapier']:
+                        self.add_attribute(player_qq, 'attack', 15)
+                    elif _c == MAP['arctic_heart']:
+                        _arc_sk = extra[ext_ind]
+                        _pl.skill[_arc_sk] -= 1
+                        ext_ind += 1
             if 'fission' in _pl.character.hidden_status.keys():
                 for _c in cards:
-                    if _c == MAP['chaotic_drill']:
-                        self.add_status(target2_qq, MAP['confusion'], 1)
-                    if _c == MAP['filching']:
-                        self.action_stack[0].is_void = True
-                        fil_card = random.choice(_tg2.card)
-                        self.remove_card(target2_qq, fil_card)
-                        self.add_card(player_qq, fil_card)
-                    if _c == MAP['pyrotheum']:
-                        self.add_status(target2_qq, MAP['flaming'], 3)
-                    if _c == MAP['cryotheum']:
-                        self.add_status(target2_qq, MAP['frost'], 2)
-                    if _c == MAP['passing_gaze']:
-                        self.add_status(target2_qq, MAP['dissociated'], 1)
-                    if _c == MAP['corrupt_pendant']:
-                        self.add_attribute(target2_qq, 'attack', -5)
-                        self.action_stack.append(Action(_tg2, _pl, action_type='damage', damage_point=60))
+                    card_able = True
+                    if card_able:
+                        if _c == MAP['chaotic_drill']:
+                            self.add_status(target2_qq, MAP['confusion'], 1)
+                        if _c == MAP['filching']:
+                            self.action_stack[0].is_void = True
+                            fil_card = random.choice(_tg2.card)
+                            self.remove_card(target2_qq, fil_card)
+                            self.add_card(player_qq, fil_card)
+                        if _c == MAP['pyrotheum']:
+                            self.add_status(target2_qq, MAP['flaming'], 3)
+                        if _c == MAP['cryotheum']:
+                            self.add_status(target2_qq, MAP['frost'], 2)
+                        if _c == MAP['passing_gaze']:
+                            self.add_status(target2_qq, MAP['dissociated'], 1)
+                        if _c == MAP['corrupt_pendant']:
+                            self.add_attribute(target2_qq, 'attack', -5)
+                            self.action_stack.append(Action(_tg2, _pl, action_type='damage', damage_point=60))
                 self.action_stack[0].damage_multi *= 0.8
             if _pl.has_hidden_status('bow'): # 复合弓结算
                 card_count = _pl.count_card()
                 self.action_stack.append(Action(_tg, _pl, action_type='damage', damage_point=75 * card_count))
+                self.remove_hidden_status(player_qq, 'bow')
                 _pl.clear_hand()
             if not self.action_stack[0].is_void: # 若未使用不造成伤害的道具，则投掷骰子
                 _act_dice = self.dice(player_qq, self.action_stack[0].dice_size, 1)
@@ -933,6 +935,11 @@ class Game:
                 self.skill_stack.append(
                     Action(target=_pl, source=_pl, name=MAP['fission'], action_type='skill'))
                 self.add_hidden_status(player_qq, 'fission', 1)
+            elif skill == MAP['massacre']:
+                self.add_attribute(player_qq, 'attack', 5)
+                self.action_stack_post.append(Action(_pl, _pl, action_type='heal', damage_point=100))
+                if not _pl.has_hidden_status('extra'):
+                   self.add_hidden_status(player_qq, 'extra', 1)
             elif skill == MAP['ice_splinter']:
                 self.skill_stack.append(
                     Action(target=_tg, source=_pl, name=MAP['ice_splinter'], action_type='skill'))
@@ -968,29 +975,41 @@ class Game:
             _tg = None
         _ret = ''
         _mp_cost = 0
-        _trait_able = True
+        trait_able = True
         if _pl.has_status(MAP['confusion']):
-            _trait_able = False
+            trait_able = False
             _ret += f'处于混乱状态，无法使用特质哦\n'
         if _pl.has_hidden_status('demon_seal'):
-            _trait_able = False
+            trait_able = False
             _ret += f'特质被封印了哦\n'
         if _pl.has_hidden_status('non_flying'):
             _mp_cost += 1
         if _pl.has_status(MAP['weakness']) and trait == MAP['decree']:
-            _trait_able = False
+            trait_able = False
             _ret += f'处于虚弱状态，无法布置律令哦\n'
-        if _trait_able:
+        if _pl.character.id == MAP['darkstar']:
+            trait_able = True
+        if trait_able:
             if trait == MAP['tireless_observer'] and _pl.character.id == MAP['neko']:
                 _pl.skill[extra[0]] -= 1 # extra传入技能名字
             elif trait == MAP['distinct_road'] and _pl.character.id == MAP['neko']:
                 _s = self.choose_skill(player_qq)
+            elif trait == MAP['dusk_void'] and _pl.character.id == MAP['yun']:
+                self.add_hidden_status(player_qq, 'dusk', -1)
             elif trait == MAP['lucky_shield'] and _pl.character.id == MAP['starduster']:
                 _star_dice = self.dice(player_qq, 6, 1)
                 _ret += f'星尘的幸运壁垒发动，幸运点数为 {_star_dice} ！\n'
                 if _star_dice in [1, 6]:
                     self.add_hidden_status(player_qq, 'invincible', 1)
                     _ret += f'星尘闪避了一次伤害!\n'
+            elif trait == MAP['resolution'] and _pl.character.id == MAP['darkstar']:
+                _res_dice = self.dice(player_qq, 6, 1)
+                _ret += f'黯星的决心发动，决心点数为 {_res_dice} ！\n'
+                if _res_dice in [1, 5, 6]:
+                    _pl.character.hp = 1
+                    _ret += f'黯星充满了决心，不会就此倒下！\n'
+                else:
+                    _ret += self.player_died(player_qq)
             elif trait == MAP['dont_forget_me'] and _pl.character.id == MAP['loveless']:
                 if extra[0] == 0:
                     self.action_stack[0].damage_multi *= 3.3
@@ -999,6 +1018,7 @@ class Game:
                 elif extra[0] == 2:
                     _pl.character.hp = 1
                     self.add_hidden_status(player_qq, 'dont_forget_me', 2)
+                    _ret += f'不要忘记恋慕……\n'
             elif trait == MAP['icy_blood'] and _pl.character.id == MAP['shigure']:
                 self.add_hidden_status(player_qq, 'ice_immunity', 1)
             elif trait == MAP['arctic_seal'] and _pl.character.id == MAP['shigure']:
@@ -1006,7 +1026,7 @@ class Game:
                 _ret += f'时雨令冰元素侵蚀目标，冰封点数为 {_ice_dice} !\n'
                 if _ice_dice in [1, 3, 6]:
                     self.add_status(_tg.qq, MAP['frozen'], 1)
-                    _ret += f'{_tg.character.id} 被冻成冰雕了，无法行动！'
+                    _ret += f'{_tg.character.id} 被冻成冰雕了，无法行动！\n'
             elif trait == MAP['im_drunk'] and _pl.character.id == MAP['sumoggu']:
                 _pl.character.hidden_status['alcohol'][2] += 0.4 * extra[0] # extra传入造成的伤害
                 if extra[0] >= 300:
@@ -1039,6 +1059,37 @@ class Game:
                         self.add_hidden_status(target_qq_list[0], 'spirit_bind', 1)
                         self.add_hidden_status(target_qq_list[0], 'decree4', 2)
                     _ret += f'{_pl.character.id} 对 {_tg.character.id} 布置了 律令·{extra[0]} ！\n'
+            elif trait == MAP['aurelysium'] and _pl.character.id == MAP['ting_xinyu']:
+                is_double = False
+                card = extra[0]
+                if len(assets.TAG[card]) >= 2:
+                    self.add_hidden_status(player_qq, 'elysium', -1)
+
+                if self.has_tag(card, MAP['sharp']):
+                    self.add_attribute(player_qq, 'attack', 5)
+                if self.has_tag(card, MAP['protect']):
+                    self.add_attribute(player_qq, 'defense', 5)
+                if self.has_tag(card, MAP['vital']):
+                    self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=50))
+                if self.has_tag(card, MAP['destiny']):
+                    self.add_hidden_status(player_qq, 'destiny', 1)
+                if self.has_tag(card, MAP['mystique']):
+                    pass
+                if self.has_tag(card, MAP['phantom']):
+                    self.draw(player_qq, 1)
+                if self.has_tag(card, MAP['magic']):
+                    self.add_attribute(target_qq, 'armor', -_tg.character.armor)
+                if self.has_tag(card, MAP['weird']):
+                    pass
+                if self.has_tag(card, MAP['disorder']):
+                    _dis_dice = self.dice(player_qq, 10, 1)
+                    self.action_stack.append(Action(_tg, _pl, damage_point=55 - 10 * _dis_dice))
+                if self.has_tag(card, MAP['sense']):
+                    self.add_attribute(player_qq, 'move_point', 1)
+                if self.has_tag(card, MAP['heat']):
+                    self.action_stack.append(Action(_tg, _pl, damage_point=30, damage_type='fire'))
+                if self.has_tag(card, MAP['chill']):
+                    pass
         return _ret
 
     def fold_card(self, player_qq: str, cards: list):
@@ -1059,19 +1110,23 @@ class Game:
         _player = self.players[player_qq]
         _player.has_played_card = False
         _player.set_max_card(6)
+        _player.character.damage_dealt_round = 0
         if _player.has_hidden_status('sky_lock'):
             _player.set_max_card(3)
-        if self.get_player_from_chara(MAP['loveless']):
+        if self.get_player_from_chara(MAP['loveless']): # 恋慕特质结算
             _pl_love = self.get_player_from_chara(MAP['loveless'])
             if _pl_love.has_hidden_status('dont_forget_me') and self.round == 2:
                _ret += self.player_died(_pl_love.qq)
-        if _player.has_status(MAP['stellar_cage']):
+        if _player.character.id == MAP['darkstar']:
+            _player.character.hidden_status['massacre'][2] = 0 # 屠杀统计归零
+        if _player.has_status(MAP['stellar_cage']): # 星牢效果结算
             self.end_turn()
         else:
-            if self.round == 1:
-                self.move_init(player_qq)
-            else:
-                self.move_regenerate(player_qq)
+            if not _player.has_hidden_status('extra'):
+                if self.round == 1: # 行动点回复
+                    self.move_init(player_qq)
+                else:
+                    self.move_regenerate(player_qq)
             if not _player.has_status(MAP['confusion']):  # 处于混乱状态的角色无法发动特质
                 if _player.character.id == MAP['nepst']:
                     _stat = list(_player.character.status.keys())
@@ -1080,7 +1135,8 @@ class Game:
             if _player.has_status(MAP['frozen']):  # 冰冻状态下将跳过回合 # 未完成
                 self.end_turn()
             else:
-                _c = self.draw(player_qq, 2)
+                if not _player.has_hidden_status('extra'): # 抽牌
+                    _c = self.draw(player_qq, 2)
                 if _player.has_hidden_status('heaven'):
                     self.draw(player_qq, 1)
         return _ret
@@ -1125,13 +1181,19 @@ class Game:
             if action.is_aoe: # 奈普斯特特质结算
                 if action.target.character.id == MAP['nepst']:
                     action.damage_point = 0
-            if action.is_track and action.target.has_status(MAP['dodge']): # 闪避结算
+            if action.source.character.id == MAP['yun']: # 云云子特质结算
+                self.play_trait(action.source.qq, trait=MAP['dusk_void'])
+                if action.source.has_hidden_status('dusk'):
+                    action.damage_point = (action.dice_point - 1) * (action.source.character.attack - 30)
+                    action.is_penetrate = True
+                    self.remove_hidden_status(action.source.qq, 'dusk')
+            if action.is_track and action.target.has_status(MAP['dodge']): # 闪避效果结算
                 self.remove_status(action.target.qq, MAP['dodge'])
             if action.target.has_status(MAP['dodge']):
                 action.is_void = True
                 self.remove_status(action.target.qq, MAP['dodge'])
                 _act_ret += f'{action.target.character.id} 闪避了一次伤害!\n'
-            if action.source.has_status(MAP['nausea']):
+            if action.source.has_status(MAP['nausea']): # 反胃效果结算
                 _nau_dice = self.dice(action.source.qq, 6, 1)
                 _act_ret += f'{action.source.character.id} 感到一阵恶心，反胃点数为 {_nau_dice} ！'
                 if _nau_dice in [2, 4, 6]:
@@ -1187,9 +1249,10 @@ class Game:
                     _dmg_ret += f'{action.target.character.id} 受到冰霜侵袭，失去了 {action.damage_point} 点生命！\n'
                 if action.damage_type == 'physical':
                        _dmg_ret += f'{action.target.character.id} 失去了 {action.damage_point} 点生命！\n'
-                action.target.character.damage_received_total += action.damage_point
+                action.target.character.damage_received_total += action.damage_point # 总承伤统计
                 if action.source != EMPTY_PLAYER:
-                    action.source.character.damage_dealt_total += action.damage_point
+                    action.source.character.damage_dealt_total += action.damage_point # 总伤统计
+                    action.source.character.damage_dealt_round += action.damage_point  # 回合伤害统计
                 if action.target.character.id == MAP['sumoggu']:
                     self.play_trait(action.target.qq, [action.source.qq], MAP['im_drunk'], [action.damage_point])
             return _dmg_ret
@@ -1277,20 +1340,34 @@ class Game:
 
         for _pl in self.players.values(): # 结算玩家死亡
             if _pl.character.hp <= 0:
-                if _pl.character.id == MAP['loveless'] and self.round == 1:
-                    self.play_trait(_pl.qq, trait=MAP['dont_forget_me'], extra=[2]) # extra标识同名被动的不同功能
+                if _pl.character.id == MAP['loveless'] and self.round == 1: # 恋慕特质结算
+                    _ret += self.play_trait(_pl.qq, trait=MAP['dont_forget_me'], extra=[2]) # extra标识同名被动的不同功能
+                if _pl.character.id == MAP['darkstar']: # 黯星特质结算
+                    _ret += self.play_trait(_pl.qq, trait=MAP['resolution'])
                 else:
                     _ret += self.player_died(_pl.qq)
+
+        if self.game_type == 0 and len(self.died) == len(self.players) - 1:
+            _ret += f'仅剩一人存活，游戏结束！'
+            for pl in self.players.values():
+                if not pl.is_dead:
+                    _ret += f'胜利者是 {pl.character.id} ！'
+            self.game_status = 2
+            return _ret
 
         for _pl in self.players.values(): # 回合结束，玩家特质/技能结算
             if (_pl.character.id == MAP['chinro'] and _pl.character.hp <= _pl.character.max_hp * 0.5
                     and _pl.character.hidden_status['encourage'][2] == 0): # 晴箬特质结算
+                _ret += f'{_pl.character.id} 决定好好休息一下，打起精神！\n'
                 _pl.character.hidden_status['encourage'][2] = 1
                 self.action_stack_post.append(
                     Action(_pl, _pl, action_type='heal', damage_point=int(_pl.character.max_hp * 0.8) - _pl.character.hp))
-            if _pl.has_hidden_status('leeching'): # 嗜血技能结算
-                self.action_stack_post.append(
-                    Action(_pl, _pl, action_type='heal', damage_point=int(_pl.character.hidden_status['leeching'][2])))
+
+        if _pl_now.character.id == MAP['darkstar'] and _pl_now.character.damage_dealt_round >= 250:
+            _ret += f'{_pl_now.character.id} 刀尖泛起了红光…屠杀开始了！\n'
+            self.play_skill(_pl_now.qq, [_pl_now.qq], MAP['massacre'], [])
+        if _pl_now.has_hidden_status('leeching'): # 嗜血技能结算
+            self.action_stack_post.append(Action(_pl_now, _pl_now, action_type='heal', damage_point=int(_pl_now.character.hidden_status['leeching'][2])))
 
         for _pl in self.players.values(): # 状态/隐藏状态持续时间-1
             _stat_be_removed = []
@@ -1339,6 +1416,6 @@ class Game:
                     if _pl.skill_status[_sk] == 0:
                         _pl.skill_status[_sk] = 1
         _ret += self.player_info()
-        _ret += f'\n{_pl_now.name} 结束了回合！\n'
+        _ret += f'\n{_pl_now.name} 结束了回合！'
         _ret += self.start_turn()
         return _ret

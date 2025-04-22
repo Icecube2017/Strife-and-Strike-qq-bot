@@ -1,1 +1,2 @@
-aurora_concussion,15
+rapier,15
+hexastal,15

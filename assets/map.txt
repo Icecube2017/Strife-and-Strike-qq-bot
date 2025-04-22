@@ -110,9 +110,9 @@ bai_xie,白㓔
 自勉
 tireless_observer,不倦的观测者
 distinct_road,明晰的来时路
-晨昏寥落
+dusk_void,晨昏寥落
 lucky_shield,幸运壁垒
-决心
+resolution,决心
 耀光爆裂
 咕了
 天魔体
@@ -167,7 +167,7 @@ decree,律令
 迅捷的乌托邦
 坚韧的乌托邦
 调和的乌托邦
-彼岸之金
+aurelysium,彼岸之金
 极寒环域
 纯洁之爱
 benevolence,仁慈
