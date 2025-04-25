@@ -599,6 +599,10 @@ class Game:
                         self.add_attribute(player_qq, 'defense', -15)
                     elif status == MAP['weakness']:
                         self.add_attribute(player_qq, 'attack', -15)
+                    elif status == MAP['cold']:
+                        self.add_attribute(player_qq, 'attack', -5)
+                    elif status == MAP['cold_ii']:
+                        self.add_attribute(player_qq, 'attack', -10)
         else:
             pass
 
@@ -618,6 +622,10 @@ class Game:
             self.add_attribute(player_qq, 'defense', 15)
         elif status == MAP['weakness']:
             self.add_attribute(player_qq, 'attack', 15)
+        elif status == MAP['cold']:
+            self.add_attribute(player_qq, 'attack', 5)
+        elif status == MAP['cold_ii']:
+            self.add_attribute(player_qq, 'attack', 10)
 
     def add_hidden_status(self, player_qq: str, status: str, duration: int):
         _pl = self.players[player_qq]
@@ -718,8 +726,12 @@ class Game:
             for _c in cards:
                 self.remove_card(player_qq, _c) # 玩家手牌移除卡牌
                 self.discard.append(_c) # 出牌堆加入卡牌
+            if _pl.character.id == MAP['ting_xinyu']:
+                self.play_trait(player_qq, target_qq_list, MAP['aurelysium'], cards)
             for _c in cards:
                 card_able = True
+                if _pl.character.id == MAP['ting_xinyu'] and len(assets.TAG[_c]) >= 2:
+                    card_able = False
                 if card_able:
                     if _c == MAP['end_crystal']:
                         _hp_dice = self.dice(player_qq, 4, 2)
@@ -909,7 +921,14 @@ class Game:
         _pl = self.players[player_qq]
         _tg = self.players[target_qq_list[0]]
         _ret = ''
-        if not _pl.has_status(MAP['confusion']):
+        skill_able = True
+        if _pl.has_status(MAP['confusion']):
+            skill_able = False
+            _ret += '混乱状态下不能使用技能哦\n'
+        if  _pl.has_status(MAP['silence']):
+            skill_able = False
+            _ret += '静默状态下不能使用技能哦\n'
+        if skill_able:
             if skill == MAP['benevolence']:
                 self.skill_stack.append(
                     Action(target=_tg, source=_pl, name=MAP['benevolence'], action_type='skill'))
@@ -1061,35 +1080,82 @@ class Game:
                     _ret += f'{_pl.character.id} 对 {_tg.character.id} 布置了 律令·{extra[0]} ！\n'
             elif trait == MAP['aurelysium'] and _pl.character.id == MAP['ting_xinyu']:
                 is_double = False
-                card = extra[0]
-                if len(assets.TAG[card]) >= 2:
-                    self.add_hidden_status(player_qq, 'elysium', -1)
-
-                if self.has_tag(card, MAP['sharp']):
-                    self.add_attribute(player_qq, 'attack', 5)
-                if self.has_tag(card, MAP['protect']):
-                    self.add_attribute(player_qq, 'defense', 5)
-                if self.has_tag(card, MAP['vital']):
-                    self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=50))
-                if self.has_tag(card, MAP['destiny']):
-                    self.add_hidden_status(player_qq, 'destiny', 1)
-                if self.has_tag(card, MAP['mystique']):
-                    pass
-                if self.has_tag(card, MAP['phantom']):
-                    self.draw(player_qq, 1)
-                if self.has_tag(card, MAP['magic']):
-                    self.add_attribute(target_qq, 'armor', -_tg.character.armor)
-                if self.has_tag(card, MAP['weird']):
-                    pass
-                if self.has_tag(card, MAP['disorder']):
-                    _dis_dice = self.dice(player_qq, 10, 1)
-                    self.action_stack.append(Action(_tg, _pl, damage_point=55 - 10 * _dis_dice))
-                if self.has_tag(card, MAP['sense']):
-                    self.add_attribute(player_qq, 'move_point', 1)
-                if self.has_tag(card, MAP['heat']):
-                    self.action_stack.append(Action(_tg, _pl, damage_point=30, damage_type='fire'))
-                if self.has_tag(card, MAP['chill']):
-                    pass
+                cards = extra
+                tags = []
+                for _c in cards: # tag总数是否≥5
+                    _tag = assets.TAG[_c]
+                    for _t in _tag:
+                        if not _t in tags:
+                            tags.append(_tag)
+                if len(tags) >= 5:
+                    is_double = True
+                _c = extra[0]
+                if not is_double:
+                    for _c in cards:
+                        if self.has_tag(_c, MAP['sharp']):
+                            self.add_attribute(player_qq, 'attack', 5)
+                        if self.has_tag(_c, MAP['protect']):
+                            self.add_attribute(player_qq, 'defense', 5)
+                        if self.has_tag(_c, MAP['vital']):
+                            self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=50))
+                        if self.has_tag(_c, MAP['destiny']):
+                            self.add_hidden_status(player_qq, 'destiny', 1)
+                        if self.has_tag(_c, MAP['mystique']):
+                            for _s in _pl.character.status.keys():
+                                if assets.STATUS[_s][0] == 1:
+                                    self.add_status(player_qq, _s, 1)
+                                print(assets.STATUS[_s][0])
+                        if self.has_tag(_c, MAP['phantom']):
+                            self.draw(player_qq, 1)
+                        if self.has_tag(_c, MAP['magic']):
+                            self.add_attribute(target_qq, 'armor', -_tg.character.armor)
+                            if _tg.has_status(MAP['dodge']):
+                                self.remove_status(target_qq, MAP['dodge'])
+                        if self.has_tag(_c, MAP['weird']):
+                            self.add_status(target_qq, MAP['silence'], 1)
+                        if self.has_tag(_c, MAP['disorder']):
+                            _dis_dice = self.dice(player_qq, 10, 1)
+                            self.action_stack.append(Action(_tg, _pl, damage_point=55 - 10 * _dis_dice))
+                        if self.has_tag(_c, MAP['sense']):
+                            self.add_attribute(player_qq, 'move_point', 1)
+                        if self.has_tag(_c, MAP['heat']):
+                            self.action_stack.append(Action(_tg, _pl, damage_point=30, damage_type='fire'))
+                        if self.has_tag(_c, MAP['chill']):
+                            self.add_status(target_qq, MAP['cold'], 1)
+                else:
+                    for _c in cards:
+                        if self.has_tag(_c, MAP['sharp']):
+                            self.add_attribute(player_qq, 'attack', 10)
+                        if self.has_tag(_c, MAP['protect']):
+                            self.add_attribute(player_qq, 'defense', 10)
+                        if self.has_tag(_c, MAP['vital']):
+                            self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
+                        if self.has_tag(_c, MAP['destiny']):
+                            self.add_hidden_status(player_qq, 'destiny2', 1)
+                        if self.has_tag(_c, MAP['mystique']):
+                            for _s in _pl.character.status.keys():
+                                if assets.STATUS[_s][0] == 1:
+                                    self.add_status(player_qq, _s, 2)
+                        if self.has_tag(_c, MAP['phantom']):
+                            self.draw(player_qq, 2)
+                        if self.has_tag(_c, MAP['magic']):
+                            self.add_attribute(target_qq, 'armor', -_tg.character.armor)
+                            if _tg.has_status(MAP['dodge']):
+                                self.remove_status(target_qq, MAP['dodge'])
+                            for _s in list(_tg.character.status.keys()):
+                                if assets.STATUS[_s][0] == 1:
+                                    self.remove_status(target_qq, _s)
+                        if self.has_tag(_c, MAP['weird']):
+                            self.add_status(target_qq, MAP['confusion'], 1)
+                        if self.has_tag(_c, MAP['disorder']):
+                            _dis_dice = self.dice(player_qq, 10, 1)
+                            self.action_stack.append(Action(_tg, _pl, damage_point=110 - 20 * _dis_dice))
+                        if self.has_tag(_c, MAP['sense']):
+                            self.add_attribute(player_qq, 'move_point', 2)
+                        if self.has_tag(_c, MAP['heat']):
+                            self.action_stack.append(Action(_tg, _pl, damage_point=60, damage_type='fire'))
+                        if self.has_tag(_c, MAP['chill']):
+                            self.add_status(target_qq, MAP['cold_ii'], 1)
         return _ret
 
     def fold_card(self, player_qq: str, cards: list):
@@ -1155,17 +1221,21 @@ class Game:
             _act_ret = ''
             if action == EMPTY_ACTION:
                 return ''
-            if action.source.character.id == MAP['loveless']:  # 恋慕特质结算
+            if action.source.character.id == MAP['loveless']:  # 恋慕【勿忘我】特质
                 self.play_trait(action.source.qq, trait=MAP['dont_forget_me'], extra=[0])
             if action.target.character.id == MAP['loveless']:
                 self.play_trait(action.target.qq, trait=MAP['dont_forget_me'], extra=[1])
+            if action.source.has_hidden_status('destiny'): # 亭歆雨【彼岸之金·命运】特质
+                action.dice_point += 1
+            if action.source.has_hidden_status('destiny2'):
+                action.dice_point += 2
             if not action.target.has_status(MAP['confusion']):
                 if action.target.character.id == MAP['tussiu']:  # 图西乌特质结算
                     action.damage_multi = 1
                     action.damage_plus = 0
                     if action.dice_point > 5:
                         action.dice_point = 5
-            if action.target.character.id == MAP['starduster'] and not action.is_void:  # 星尘特质结算
+            if action.target.character.id == MAP['starduster'] and not action.is_void:  # 星尘【幸运壁垒】特质
                 _act_ret += self.play_trait(action.target.qq, trait=MAP['lucky_shield'])
                 if action.target.has_hidden_status('invincible'):
                     action.is_void = True

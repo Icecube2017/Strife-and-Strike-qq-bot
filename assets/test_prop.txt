@@ -1,2 +1,3 @@
-rapier,15
-hexastal,15
+strength_spell,15
+ascension_stair,10
+fragment,10
