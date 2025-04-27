@@ -143,7 +143,7 @@ class Player:
         return True if skill in self.skill.keys() else False
 
     def has_trait(self, trait: str) -> bool: # 未完成
-        return True if trait in assets.TRAIT[self.id] else False
+        return True if trait in assets.TRAIT[self.character.id] else False
 
     def set_character(self, c: list) -> str:  # 设置玩家角色
         self.character = Character(*c)
@@ -326,7 +326,6 @@ class Game:
 
         # self.current_action: Action = 0
         self.action_stack: List[Action] = [] # 行动阶段的技能栈
-        self.action_stack_post: List[Action] = [] # 回合结束的技能栈
         self.skill_stack: List[Action] = []
         self.dice_stack: List = []
 
@@ -681,6 +680,11 @@ class Game:
             _cost = 1
             if _pl.has_hidden_status('non_flying'):
                 _cost += 1
+        if _pl.character.id == MAP['gentou']: # 舸灯特质结算
+            self.play_trait(player_qq, trait=MAP['ghost_ferry'], extra=[0])
+            if _pl.has_hidden_status('ferry'):
+                _cost -= 1
+                self.remove_hidden_status(player_qq, 'ferry')
         if _cost > _pl.character.move_point:
             return "你的行动点不足哦"
         if not 'fission' in _pl.character.hidden_status and len(target_qq_list) > 1:
@@ -929,39 +933,21 @@ class Game:
             skill_able = False
             _ret += '静默状态下不能使用技能哦\n'
         if skill_able:
+            if skill != MAP['massacre']:
+                self.skill_stack.append(Action(_tg, _pl, name=skill, action_type='skill'))
+
             if skill == MAP['benevolence']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['benevolence'], action_type='skill'))
-            elif skill == MAP['phase_transition']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['phase_transition'], action_type='skill'))
-            elif skill == MAP['heaven_delivery']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['heaven_delivery'], action_type='skill'))
-            elif skill == MAP['purification']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['purification'], action_type='skill'))
-            elif skill == MAP['blood_thirsty']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['blood_thirsty'], action_type='skill'))
-            elif skill == MAP['reticence']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['reticence'], action_type='skill'))
-            elif skill == MAP['laser']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['laser'], action_type='skill'))
+                if extra[0] == '1':
+                    self.add_hidden_status(player_qq, 'bene_type1', 1)
+                if extra[0] == '2':
+                    self.add_hidden_status(player_qq, 'bene_type2', 1)
             elif skill == MAP['fission']:
-                self.skill_stack.append(
-                    Action(target=_pl, source=_pl, name=MAP['fission'], action_type='skill'))
                 self.add_hidden_status(player_qq, 'fission', 1)
             elif skill == MAP['massacre']:
                 self.add_attribute(player_qq, 'attack', 5)
-                self.action_stack_post.append(Action(_pl, _pl, action_type='heal', damage_point=100))
+                self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
                 if not _pl.has_hidden_status('extra'):
                    self.add_hidden_status(player_qq, 'extra', 1)
-            elif skill == MAP['ice_splinter']:
-                self.skill_stack.append(
-                    Action(target=_tg, source=_pl, name=MAP['ice_splinter'], action_type='skill'))
             _tgs_c_id = ''
             for _tgs in target_qq_list:
                 _tgs_c_id += (self.players[_tgs].character.id + ' ')
@@ -978,8 +964,6 @@ class Game:
                 _pl.skill.pop(skill)
                 _pl.skill_status.pop(skill)
                 _ret += f'{skill} 的投影缓缓破碎了…\n'
-        else:
-            _ret += f'你处于混乱状态，无法使用技能哦\n'
         return _ret
 
     def play_trait(self, player_qq: str, target_qq_list = None, trait: str = '', extra: list = None):
@@ -995,17 +979,25 @@ class Game:
         _ret = ''
         _mp_cost = 0
         trait_able = True
+
         if _pl.has_status(MAP['confusion']):
             trait_able = False
             _ret += f'处于混乱状态，无法使用特质哦\n'
         if _pl.has_hidden_status('demon_seal'):
             trait_able = False
             _ret += f'特质被封印了哦\n'
-        if _pl.has_hidden_status('non_flying'):
-            _mp_cost += 1
         if _pl.has_status(MAP['weakness']) and trait == MAP['decree']:
             trait_able = False
             _ret += f'处于虚弱状态，无法布置律令哦\n'
+
+        if trait == MAP['ghost_ferry']:
+            _mp_cost = 2
+        if _pl.has_hidden_status('non_flying'):
+            _mp_cost += 1
+        if _pl.character.move_point < _mp_cost:
+            trait_able = False
+            _ret += f'行动点不足，无法发动特质哦\n'
+
         if _pl.character.id == MAP['darkstar']:
             trait_able = True
         if trait_able:
@@ -1046,10 +1038,16 @@ class Game:
                 if _ice_dice in [1, 3, 6]:
                     self.add_status(_tg.qq, MAP['frozen'], 1)
                     _ret += f'{_tg.character.id} 被冻成冰雕了，无法行动！\n'
+            elif trait == MAP['ghost_ferry'] and _pl.character.id == MAP['gentou']:
+                if not extra:
+                    self.action_stack[0].damage_plus += 45
+                    self.draw(player_qq, 2)
+                else:
+                    self.add_hidden_status(player_qq, 'ferry', 1)
             elif trait == MAP['im_drunk'] and _pl.character.id == MAP['sumoggu']:
                 _pl.character.hidden_status['alcohol'][2] += 0.4 * extra[0] # extra传入造成的伤害
                 if extra[0] >= 300:
-                    self.action_stack_post.append(Action(_tg, _pl, damage_point=round(_pl.character.hidden_status['alcohol'][2])))
+                    self.action_stack.append(Action(_tg, _pl, damage_point=round(_pl.character.hidden_status['alcohol'][2])))
                     _pl.character.hidden_status['alcohol'][2] = 0
                     self.add_status(player_qq, MAP['weakness'], 1)
                     self.add_status(target_qq, MAP['nausea'], 2)
@@ -1156,6 +1154,10 @@ class Game:
                             self.action_stack.append(Action(_tg, _pl, damage_point=60, damage_type='fire'))
                         if self.has_tag(_c, MAP['chill']):
                             self.add_status(target_qq, MAP['cold_ii'], 1)
+            _tgs_c_id = ''
+            for _tgs in target_qq_list:
+                _tgs_c_id += (self.players[_tgs].character.id + ' ')
+            _ret += f'{_pl.character.id} 对 {_tgs_c_id}使用了 {trait} !\n'
         return _ret
 
     def fold_card(self, player_qq: str, cards: list):
@@ -1188,11 +1190,7 @@ class Game:
         if _player.has_status(MAP['stellar_cage']): # 星牢效果结算
             self.end_turn()
         else:
-            if not _player.has_hidden_status('extra'):
-                if self.round == 1: # 行动点回复
-                    self.move_init(player_qq)
-                else:
-                    self.move_regenerate(player_qq)
+
             if not _player.has_status(MAP['confusion']):  # 处于混乱状态的角色无法发动特质
                 if _player.character.id == MAP['nepst']:
                     _stat = list(_player.character.status.keys())
@@ -1205,6 +1203,11 @@ class Game:
                     _c = self.draw(player_qq, 2)
                 if _player.has_hidden_status('heaven'):
                     self.draw(player_qq, 1)
+                if not _player.has_hidden_status('extra'):
+                    if self.round == 1:  # 行动点回复
+                        self.move_init(player_qq)
+                    else:
+                        self.move_regenerate(player_qq)
         return _ret
 
     def end_turn(self):
@@ -1257,6 +1260,16 @@ class Game:
                     action.damage_point = (action.dice_point - 1) * (action.source.character.attack - 30)
                     action.is_penetrate = True
                     self.remove_hidden_status(action.source.qq, 'dusk')
+            if action.source.has_hidden_status('benevolent') and action.damage_point >= 100: # 技能仁慈结算
+                action.is_void = True
+                if action.source.has_hidden_status('bene_type1'):
+                    self.action_stack.append(Action(action.source, action.source, action_type='heal', damage_point=int(0.2 * action.source.character.max_hp)))
+                if action.source.has_hidden_status('bene_type2'):
+                    self.draw(action.source.qq, 2)
+                self.remove_hidden_status(action.source.qq, 'benevolent')
+            if action.target.has_hidden_status('transition'): # 技能相转移结算
+                action.is_void = True
+                action.target.character.hidden_status['transition'][2] += action.damage_point
             if action.is_track and action.target.has_status(MAP['dodge']): # 闪避效果结算
                 self.remove_status(action.target.qq, MAP['dodge'])
             if action.target.has_status(MAP['dodge']):
@@ -1282,6 +1295,15 @@ class Game:
                 action.target.character.damage_received_total += action.damage_point
                 action.source.character.damage_dealt_round += action.damage_point  # 统计每回合造成的总伤
                 _act_ret += f'{action.source.character.id} 对 {action.target.character.id} 造成了 {action.damage_point} 点伤害！\n'
+            if (action.target.character.id == MAP['chinro'] and action.target.character.hp <= action.target.character.max_hp * 0.5
+                    and action.target.character.hidden_status['encourage'][2] == 0): # 茵竹特质结算
+                _act_ret += f'{action.target.character.id} 决定好好休息一下，打起精神！\n'
+                action.target.character.hidden_status['encourage'][2] = 1
+                self.action_stack.append(
+                    Action(action.target, action.target, action_type='heal', damage_point=int(action.target.character.max_hp * 0.8) - action.target.character.hp))
+            if action.source.character.id == MAP['darkstar'] and action.damage_point >= 250:  # 技能屠杀结算
+                _act_ret += f'{action.source.character.id} 刀尖泛起了红光…屠杀开始了！\n'
+                self.play_skill(action.source.qq, [action.source.qq], MAP['massacre'], [])
             if action.source.has_hidden_status('hero_legend'):
                 self.remove_hidden_status(action.source.qq, 'hero_legend')
             if action.target.has_hidden_status('dream_shelter'):
@@ -1291,18 +1313,27 @@ class Game:
         def damage_event(action: Action):
             _dmg_ret = ''
             if action.is_aoe:
-                if action.target.character.id in ['奈普斯特', "格白"]:
+                if action.target.character.id in [MAP['nepst']]:
                     action.damage_point = 0
-            if action.damage_type == 'magical':
+            if action.damage_type in ['magical', 'physical']:
                 if action.target.character.id == MAP['starduster']: # 星尘特质结算
                     _dmg_ret += self.play_trait(action.target.qq, trait=MAP['lucky_shield'])
-                if action.target.has_hidden_status('invincible'):
+                    if action.target.has_hidden_status('invincible'):
+                        action.is_void = True
+                if action.target.has_hidden_status('transition'):  # 技能相转移结算
                     action.is_void = True
+                    action.target.character.hidden_status['transition'][2] += action.damage_point
+                if action.name == 'transition':
+                    action.damage_point = action.source.character.hidden_status['transition'][2]
+                    self.remove_hidden_status(action.source.qq, 'transition')
                 if not action.is_void:
                     if action.source.has_hidden_status('leeching'):
                         action.source.character.hidden_status['leeching'][2] += 0.5 * action.damage_point
                     if action.target.has_status(MAP['fractured']):
                         action.target.character.hp -= action.damage_point
+                    if action.source.character.id == MAP['darkstar'] and action.damage_point >= 250:  # 技能屠杀结算
+                        _dmg_ret += f'{action.source.character.id} 刀尖泛起了红光…屠杀开始了！\n'
+                        self.play_skill(action.source.qq, [action.source.qq], MAP['massacre'], [])
                     else:
                         damage(action)
             else:
@@ -1332,6 +1363,9 @@ class Game:
             if action.target.has_status(MAP['dissociated']):
                 _heal_ret += f'{action.target.character.id} 处于游离状态，无法回复生命……\n'
             else:
+                if action.name == 'leeching':
+                    action.damage_point = int(action.source.character.hidden_status['leeching'][2])
+                    self.remove_hidden_status(action.source.qq, 'leeching')
                 if action.target.character.hp + action.damage_point >= action.target.character.max_hp:
                     action.damage_point = action.target.character.max_hp - action.target.character.hp
                 action.target.character.hp += action.damage_point
@@ -1361,11 +1395,10 @@ class Game:
         for _s in self.skill_stack:
             if not _s.is_silenced:
                 if _s.name == MAP['benevolence']:
-                    pass
+                    self.add_hidden_status(_s.source.qq, 'benevolent', 1)
                 elif _s.name == MAP['phase_transition']:
-                    for action in self.action_stack:
-                        if action.target == _s.source and action.type in ['action', 'damage']:
-                            action.target = _s.target
+                    self.add_hidden_status(_s.source.qq, 'transition', 1)
+                    self.action_stack.append(Action(_s.target, _s.source, name='transition'))
                 elif _s.name == MAP['heaven_delivery']:
                     self.add_hidden_status(_s.target.qq, 'heaven', 2)
                     self.add_hidden_status(_s.source.qq, 'heaven', 2)
@@ -1375,7 +1408,7 @@ class Game:
                             self.remove_status(_s.target.qq, _stat)
                 elif _s.name == MAP['blood_thirsty']:
                     self.add_hidden_status(_s.source.qq, 'leeching', 1)
-                    _s.source.character.hidden_status['leeching'].append(0)
+                    self.action_stack.append(Action(_s.source, _s.source, name='leeching', action_type='heal'))
                 elif _s.name == MAP['laser']:
                     self.action_stack.append(Action(_s.target, _s.source, damage_point=60))
                     self.add_status(_s.target.qq, MAP['fragility'], 2)
@@ -1385,7 +1418,7 @@ class Game:
                         self.skill_stack[_s_ind - 1].is_silenced = True
                 elif _s.name == MAP['ice_splinter']:
                     self.add_status(_s.target.qq, MAP['frost'], 1)
-                    self.action_stack.append(Action(_s.target, _s.source, action_type='damage', damage_point=80))
+                    self.action_stack.append(Action(_s.target, _s.source, damage_point=80))
         self.skill_stack.clear()
 
         _stat = _pl_now.character.status # 造成伤害的状态结算
@@ -1398,15 +1431,16 @@ class Game:
         if _pl_now.has_status(MAP['regeneration']):
             self.action_stack.append(Action(_pl_now, _pl_now, action_type='heal', damage_point=120))
 
-        # self.action_stack.reverse() # 行动结算（后置行动先结算）
-        for _a in self.action_stack:
+        # self.action_stack.reverse() # 行动结算
+        while self.action_stack:
+            _a = self.action_stack[0]
             if _a.type == 'action': # 结算角色的攻击行为
                 _ret += action_event(_a)
             elif _a.type == 'damage': # 结算冰火等造成的生命损失
                 _ret += damage_event(_a)
             elif _a.type == 'heal': # 结算治疗
                 _ret += heal_event(_a)
-        self.action_stack.clear()
+            self.action_stack.pop(0)
 
         for _pl in self.players.values(): # 结算玩家死亡
             if _pl.character.hp <= 0:
@@ -1425,19 +1459,7 @@ class Game:
             self.game_status = 2
             return _ret
 
-        for _pl in self.players.values(): # 回合结束，玩家特质/技能结算
-            if (_pl.character.id == MAP['chinro'] and _pl.character.hp <= _pl.character.max_hp * 0.5
-                    and _pl.character.hidden_status['encourage'][2] == 0): # 晴箬特质结算
-                _ret += f'{_pl.character.id} 决定好好休息一下，打起精神！\n'
-                _pl.character.hidden_status['encourage'][2] = 1
-                self.action_stack_post.append(
-                    Action(_pl, _pl, action_type='heal', damage_point=int(_pl.character.max_hp * 0.8) - _pl.character.hp))
 
-        if _pl_now.character.id == MAP['darkstar'] and _pl_now.character.damage_dealt_round >= 250:
-            _ret += f'{_pl_now.character.id} 刀尖泛起了红光…屠杀开始了！\n'
-            self.play_skill(_pl_now.qq, [_pl_now.qq], MAP['massacre'], [])
-        if _pl_now.has_hidden_status('leeching'): # 嗜血技能结算
-            self.action_stack_post.append(Action(_pl_now, _pl_now, action_type='heal', damage_point=int(_pl_now.character.hidden_status['leeching'][2])))
 
         for _pl in self.players.values(): # 状态/隐藏状态持续时间-1
             _stat_be_removed = []
@@ -1461,13 +1483,6 @@ class Game:
         for _k in list(_skill.keys()): # 技能CD-1
             if _skill[_k] > 0:
                 _skill[_k] -= 1
-
-        for _a in self.action_stack_post: # 回合结束的一些特质结算
-            if _a.type == 'damage': # 结算冰火等造成的生命损失
-                _ret += damage_event(_a)
-            elif _a.type == 'heal': # 结算治疗
-                _ret += heal_event(_a)
-        self.action_stack_post.clear()
 
         _ret += '\n'
         if not _pl_now.has_hidden_status('extra'):
