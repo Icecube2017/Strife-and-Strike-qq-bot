@@ -113,7 +113,7 @@ distinct_road,明晰的来时路
 dusk_void,晨昏寥落
 lucky_shield,幸运壁垒
 resolution,决心
-耀光爆裂
+radiant_blast,耀光爆裂
 咕了
 天魔体
 血灵斩

@@ -11,7 +11,7 @@ from assets import accounts, MAP
 CHARA_EXCLUSIVE: Dict[str, str] = {"黯星": "屠杀", "恋慕": "氤氲", "卿别": "窃梦者", "时雨": "冰芒", "敏博士": "异镜解构", "赐弥": "数据传输"}
 SKILL_EXCLUSIVE: Dict[str, int] = {"屠杀": 0, "氤氲": 4, "冰芒": 1,  "异镜解构": 3, "数据传输": -2} # 数据传输CD动态变化
 # 可叠加的状态
-STATUS_STACKABLE: list = []
+STATUS_STACKABLE: list = [MAP['soul_flare']]
 
 def dice(size: int, times: int = 1) -> int:
     _d: int = 0
@@ -603,7 +603,15 @@ class Game:
                     elif status == MAP['cold_ii']:
                         self.add_attribute(player_qq, 'attack', -10)
         else:
-            pass
+            if not is_immune:
+                try:
+                    _pl.character.status[status][0] = duration
+                    _pl.character.status[status][1] = duration * self.player_count
+                    _pl.character.status[status][2] += 1  # 状态层数+1
+                except KeyError:
+                    _pl.character.status[status] = [0, 0, 1]
+                    _pl.character.status[status][0] = duration
+                    _pl.character.status[status][1] = duration * self.player_count
 
     def remove_status(self, player_qq: str, status: str):
         _pl = self.players[player_qq]
@@ -1021,6 +1029,15 @@ class Game:
                     _ret += f'黯星充满了决心，不会就此倒下！\n'
                 else:
                     _ret += self.player_died(player_qq)
+            elif trait == MAP['radiant_blast'] and _pl.character.id == MAP['fang_han']:
+                _rad_dice = self.dice(player_qq, 6, 1)
+                _ret += f'方寒凝聚点点光芒，耀光点数为 {_rad_dice} ！\n'
+                if _rad_dice in [4, 5]:
+                    self.add_status(target_qq, MAP['soul_flare'], -1)
+                elif _rad_dice in [6]:
+                    self.add_status(target_qq, MAP['soul_flare'], -1)
+                    self.add_status(target_qq, MAP['soul_flare'], -1)
+                _ret += f'方寒轮转光明之力， 为 {_tg.character.id} 护身！\n'
             elif trait == MAP['dont_forget_me'] and _pl.character.id == MAP['loveless']:
                 if extra[0] == 0:
                     self.action_stack[0].damage_multi *= 3.3
@@ -1042,6 +1059,7 @@ class Game:
                 if not extra:
                     self.action_stack[0].damage_plus += 45
                     self.draw(player_qq, 2)
+                    _ret += f'舸灯引渡鬼魂之力，攻击了 {_tg.character.id}！\n'
                 else:
                     self.add_hidden_status(player_qq, 'ferry', 1)
             elif trait == MAP['im_drunk'] and _pl.character.id == MAP['sumoggu']:
@@ -1154,10 +1172,6 @@ class Game:
                             self.action_stack.append(Action(_tg, _pl, damage_point=60, damage_type='fire'))
                         if self.has_tag(_c, MAP['chill']):
                             self.add_status(target_qq, MAP['cold_ii'], 1)
-            _tgs_c_id = ''
-            for _tgs in target_qq_list:
-                _tgs_c_id += (self.players[_tgs].character.id + ' ')
-            _ret += f'{_pl.character.id} 对 {_tgs_c_id}使用了 {trait} !\n'
         return _ret
 
     def fold_card(self, player_qq: str, cards: list):
@@ -1224,42 +1238,15 @@ class Game:
             _act_ret = ''
             if action == EMPTY_ACTION:
                 return ''
-            if action.source.character.id == MAP['loveless']:  # 恋慕【勿忘我】特质
-                self.play_trait(action.source.qq, trait=MAP['dont_forget_me'], extra=[0])
-            if action.target.character.id == MAP['loveless']:
-                self.play_trait(action.target.qq, trait=MAP['dont_forget_me'], extra=[1])
-            if action.source.has_hidden_status('destiny'): # 亭歆雨【彼岸之金·命运】特质
-                action.dice_point += 1
-            if action.source.has_hidden_status('destiny2'):
-                action.dice_point += 2
-            if not action.target.has_status(MAP['confusion']):
-                if action.target.character.id == MAP['tussiu']:  # 图西乌特质结算
-                    action.damage_multi = 1
-                    action.damage_plus = 0
-                    if action.dice_point > 5:
-                        action.dice_point = 5
             if action.target.character.id == MAP['starduster'] and not action.is_void:  # 星尘【幸运壁垒】特质
                 _act_ret += self.play_trait(action.target.qq, trait=MAP['lucky_shield'])
                 if action.target.has_hidden_status('invincible'):
                     action.is_void = True
                     self.remove_hidden_status(action.target.qq, 'invincible')
-            if action.target.character.id == MAP['shigure']: # 时雨特质结算
-                self.play_trait(action.target.qq, trait=MAP['icy_blood'])
-                if action.target.has_hidden_status('ice_immunity'):
-                    action.damage_plus -= action.source.get_status_duration(MAP['frost']) * 75
-                    self.remove_hidden_status(action.target.qq, 'ice_immunity')
-            if action.source.has_hidden_status('nano'): # 纳米渗透结算
-                action.attack_plus += action.target.character.defense
-            action.set_damage_point(action.calculate())
             if action.is_aoe: # 奈普斯特特质结算
                 if action.target.character.id == MAP['nepst']:
                     action.damage_point = 0
-            if action.source.character.id == MAP['yun']: # 云云子特质结算
-                self.play_trait(action.source.qq, trait=MAP['dusk_void'])
-                if action.source.has_hidden_status('dusk'):
-                    action.damage_point = (action.dice_point - 1) * (action.source.character.attack - 30)
-                    action.is_penetrate = True
-                    self.remove_hidden_status(action.source.qq, 'dusk')
+
             if action.source.has_hidden_status('benevolent') and action.damage_point >= 100: # 技能仁慈结算
                 action.is_void = True
                 if action.source.has_hidden_status('bene_type1'):
@@ -1267,9 +1254,6 @@ class Game:
                 if action.source.has_hidden_status('bene_type2'):
                     self.draw(action.source.qq, 2)
                 self.remove_hidden_status(action.source.qq, 'benevolent')
-            if action.target.has_hidden_status('transition'): # 技能相转移结算
-                action.is_void = True
-                action.target.character.hidden_status['transition'][2] += action.damage_point
             if action.is_track and action.target.has_status(MAP['dodge']): # 闪避效果结算
                 self.remove_status(action.target.qq, MAP['dodge'])
             if action.target.has_status(MAP['dodge']):
@@ -1283,18 +1267,59 @@ class Game:
                     action.is_void = True
                     _act_ret += f'{action.source.character.id} 由于反胃，攻击没有击中目标…\n'
             if not action.is_void:
-                if action.is_pierce or action.target.has_status(MAP['fractured']) or action.is_penetrate:
-                    action.target.character.hp -= action.damage_point
-                else:
-                    damage(action)
+                if action.source.character.id == MAP['loveless']:  # 恋慕【勿忘我】特质
+                    self.play_trait(action.source.qq, trait=MAP['dont_forget_me'], extra=[0])
+                if action.target.character.id == MAP['loveless']:
+                    self.play_trait(action.target.qq, trait=MAP['dont_forget_me'], extra=[1])
+                if action.source.has_hidden_status('destiny'):  # 亭歆雨【彼岸之金·命运】特质
+                    action.dice_point += 1
+                if action.source.has_hidden_status('destiny2'):
+                    action.dice_point += 2
+                if not action.target.has_status(MAP['confusion']):
+                    if action.target.character.id == MAP['tussiu']:  # 图西乌特质结算
+                        action.damage_multi = 1
+                        action.damage_plus = 0
+                        if action.dice_point > 5:
+                            action.dice_point = 5
+                if action.target.character.id == MAP['shigure']:  # 时雨特质结算
+                    self.play_trait(action.target.qq, trait=MAP['icy_blood'])
+                    if action.target.has_hidden_status('ice_immunity'):
+                        action.damage_plus -= action.source.get_status_duration(MAP['frost']) * 75
+                        self.remove_hidden_status(action.target.qq, 'ice_immunity')
+                if action.source.has_hidden_status('nano'):  # 纳米渗透结算
+                    action.attack_plus += action.target.character.defense
+                if action.target.has_status(MAP['soul_flare']): # 状态灵曜结算
+                    action.damage_plus -= 80 * action.target.character.status[MAP['soul_flare']][2]
+                    _soul_dice = self.dice(action.target.qq, 6, 1)
+                    _act_ret += f'灵曜瞬间爆发，灵曜点数为 {_soul_dice} ！ \n'
+                    self.action_stack.append(Action(action.source, action.target, damage_point=(90 + 5 * _soul_dice) *
+                                             action.target.character.status[MAP['soul_flare']][2], is_penetrate=True))
+                action.set_damage_point(action.calculate())
+
+                if action.source.character.id == MAP['yun']:  # 云云子特质结算
+                    self.play_trait(action.source.qq, trait=MAP['dusk_void'])
+                    if action.source.has_hidden_status('dusk'):
+                        action.damage_point = ((action.dice_point - 1) * (
+                                    action.source.character.attack - 30) + action.damage_plus) * action.damage_multi
+                        action.is_penetrate = True
+                        self.remove_hidden_status(action.source.qq, 'dusk')
+                if action.target.has_hidden_status('transition'):  # 技能相转移结算
+                    action.is_void = True
+                    action.target.character.hidden_status['transition'][2] += action.damage_point
+                if not action.is_void:
+                    if action.is_pierce or action.target.has_status(MAP['fractured']) or action.is_penetrate:
+                        action.target.character.hp -= action.damage_point
+                    else:
+                        damage(action)
+                    action.source.character.damage_dealt_total += action.damage_point  # 统计总伤和总承伤
+                    action.target.character.damage_received_total += action.damage_point
+                    action.source.character.damage_dealt_round += action.damage_point  # 统计每回合造成的总伤
+                    _act_ret += f'{action.source.character.id} 对 {action.target.character.id} 造成了 {action.damage_point} 点伤害！\n'
                 if action.source.has_hidden_status('leeching'):
                     action.source.character.hidden_status['leeching'][2] += 0.5 * action.damage_point
                 if action.target.character.id == MAP['sumoggu']: # 长霾特质结算
                     self.play_trait(action.target.qq, [action.source.qq], MAP['im_drunk'], [action.damage_point])
-                action.source.character.damage_dealt_total += action.damage_point  # 统计总伤和总承伤
-                action.target.character.damage_received_total += action.damage_point
-                action.source.character.damage_dealt_round += action.damage_point  # 统计每回合造成的总伤
-                _act_ret += f'{action.source.character.id} 对 {action.target.character.id} 造成了 {action.damage_point} 点伤害！\n'
+
             if (action.target.character.id == MAP['chinro'] and action.target.character.hp <= action.target.character.max_hp * 0.5
                     and action.target.character.hidden_status['encourage'][2] == 0): # 茵竹特质结算
                 _act_ret += f'{action.target.character.id} 决定好好休息一下，打起精神！\n'
