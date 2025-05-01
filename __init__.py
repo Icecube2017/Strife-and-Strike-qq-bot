@@ -13,4 +13,3 @@ from nonebot.params import State, EventPlainText
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 
 sns = on_startswith({"sns", "SNS"}, priority=10)
-
