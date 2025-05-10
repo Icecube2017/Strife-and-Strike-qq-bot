@@ -181,7 +181,7 @@ def __get_status_list() -> Dict[str, list]:
 
 STATUS = __get_status_list()
 
-def __search_alias(word: str):
+def search_alias(word: str):
     def part_same(part: str, whole: str):
         is_same = False
         _x = len(whole) - len(part)
@@ -197,7 +197,7 @@ def __search_alias(word: str):
                 _ret.append(_k)
     return _ret
 
-def __match_alias(word: str):
+def match_alias(word: str):
     _ret = 'none'
     for _k, _v in ALIAS.items():
         if word in _v or word == MAP[_k]:

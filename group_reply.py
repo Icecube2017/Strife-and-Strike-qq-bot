@@ -34,7 +34,7 @@ async def echo(api: BotAPI, message: GroupMessage, params):
 @Commands("/alias")
 async def alias(api: BotAPI, message: GroupMessage, params):
     _para = params.split(sep=' ')[0]
-    _lst = assets.__search_alias(_para)
+    _lst = assets.search_alias(_para)
     if len(_lst) == 1:
         _word = _lst[0]
         _tag_cnt = ''
@@ -198,11 +198,11 @@ async def init(api: BotAPI, message: GroupMessage, params):
     _par_lst = params.split(sep=' ')
     game.new_game('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', 0)
     game.join_game('2410AB7265A435E36F39DC671B6D913A', '9C74E4EEE32610EAF5DFEC1C1C968660')
-    game.set_character('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', '茵竹')
-    game.set_character('2410AB7265A435E36F39DC671B6D913A', '9C74E4EEE32610EAF5DFEC1C1C968660', '方寒')
+    game.set_character('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', '图西乌')
+    game.set_character('2410AB7265A435E36F39DC671B6D913A', '9C74E4EEE32610EAF5DFEC1C1C968660', '飖')
     game.set_deck('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', 'test')
     _cnt = game.start_game('2410AB7265A435E36F39DC671B6D913A','7758FDF03BDCD44055806E9245E4F264')
-    game.set_skill('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', '嗜血')
+    game.set_skill('2410AB7265A435E36F39DC671B6D913A', '7758FDF03BDCD44055806E9245E4F264', '外星人')
     game.set_skill('2410AB7265A435E36F39DC671B6D913A', '9C74E4EEE32610EAF5DFEC1C1C968660', '相转移')
     await api.post_group_message(group_openid=message.group_openid, content=_cnt, msg_id=message.id)
 

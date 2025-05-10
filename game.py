@@ -441,7 +441,7 @@ def play_card(gid: str, player_qq: str, target_list: list, card: list = None, ex
     std_card = [] # 将输入的卡牌名转换为标准化名称
     _pl_card = _player.get_hand()
     for _c in card:
-        _std_c = assets.__match_alias(_c)
+        _std_c = assets.match_alias(_c)
         if _std_c == 'none':
             return "出的卡牌里有的不存在哦"
         try:
@@ -533,7 +533,7 @@ def fold_card(gid: str, player_qq: str, cards: list) -> str:
         return "现在还没到你弃牌哦"
     std_card = []  # 将输入的卡牌名转换为标准化名称
     for _c in cards:
-        _std_c = assets.__match_alias(_c)
+        _std_c = assets.match_alias(_c)
         std_card.append(_std_c)
         if _std_c == 'none':
             return "弃的卡牌里有的不存在哦"

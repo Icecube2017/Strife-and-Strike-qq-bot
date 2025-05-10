@@ -114,9 +114,9 @@ dusk_void,晨昏寥落
 lucky_shield,幸运壁垒
 resolution,决心
 radiant_blast,耀光爆裂
-咕了
-天魔体
-血灵斩
+escaping,咕了
+demonic_avatar,天魔体
+hema_slash,血灵斩
 dont_forget_me,勿忘我
 二进制
 回旋曲
@@ -235,7 +235,7 @@ nebula,氤氲
 overdraft,透支
 inversion,镜像
 dreaming,梦境
-gugu,咕了
+gugu,咕咕
 frozen,冰封
 dodge,闪避
 soul_flare,灵曜
