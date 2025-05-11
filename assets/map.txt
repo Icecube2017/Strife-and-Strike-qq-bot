@@ -118,7 +118,7 @@ escaping,咕了
 demonic_avatar,天魔体
 hema_slash,血灵斩
 dont_forget_me,勿忘我
-二进制
+binary,二进制
 回旋曲
 大预言
 映射

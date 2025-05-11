@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from enum import Enum
 
 class GameStatus(Enum):
@@ -21,19 +21,9 @@ class GameConfig:
 @dataclass 
 class SkillConfig:
     """技能配置"""
-    IGNORE: List[str] = ["黯星", "恋慕", "卿别", "时雨", "敏博士", "赐弥"]
-    EXCLUSIVE: Dict[str, str] = {
-        "黯星": "屠杀",
-        "恋慕": "氤氲",
-        "卿别": "窃梦者", 
-        "时雨": "冰芒",
-        "敏博士": "异镜解构", 
-        "赐弥": "数据传输"
-    }
-    OUT_OF_TURN: List[str] = [
-        "相转移", "恐吓", "阈限", "沉默",
-        "最后的希望", "不死", "止杀"
-    ]
+    IGNORE: Tuple[str] = ("黯星", "恋慕", "卿别", "时雨", "敏博士", "赐弥")
+    EXCLUSIVE: Tuple[str] = ("屠杀", "氤氲", "窃梦者", "冰芒", "异镜解构", "数据传输")
+    OUT_OF_TURN: Tuple[str] = ("相转移", "恐吓", "阈限", "沉默", "最后的希望", "不死", "止杀")
 
 class GameContext:
     """游戏提示文本"""

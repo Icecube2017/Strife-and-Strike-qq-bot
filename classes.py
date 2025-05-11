@@ -5,6 +5,7 @@ from typing import List, Dict
 from pathlib import Path
 
 import assets
+from config import GameStatus
 from assets import accounts, MAP
 
 # 自带技能角色忽略技能抽取
@@ -302,7 +303,7 @@ class Game:
         self.starter_qq = starter_qq  #发起人openid
         self.game_type = game_type  # 对局类型:0-个人战 1-团队战 2-Boss战
 
-        self.game_status: int = 0  # 游戏状态:0-准备阶段 1-进行中 2-已结束 3-暂停中 4-中途取消
+        self.game_status: GameStatus = GameStatus.WAITING  # 游戏状态:0-准备阶段 1-进行中 2-已结束 3-暂停中 4-中途取消
         self.game_sequence: List[int] = []  # 出牌次序
         self.player_count: int = 0  # 玩家数量
         self.round: int = 0  # 游戏轮次
@@ -420,7 +421,7 @@ class Game:
         return f"卡包变更为 {deck_name} ！"
 
     def start_game(self, player_qq: str):
-        self.game_status = 1
+        self.game_status = GameStatus.PLAYING
         self.round = 1
         self.turn = 1
         return self._init_game()
@@ -617,7 +618,7 @@ class Game:
 
     def remove_status(self, player_qq: str, status: str):
         _pl = self.players[player_qq]
-        _pl.character.status.pop(status)
+
         if status == MAP['frost']:
             self.add_attribute(player_qq, 'attack', 20)
         elif status == MAP['strength']:
@@ -635,6 +636,8 @@ class Game:
             self.add_attribute(player_qq, 'attack', 5)
         elif status == MAP['cold_ii']:
             self.add_attribute(player_qq, 'attack', 10)
+
+        _pl.character.status.pop(status)
 
     def add_hidden_status(self, player_qq: str, status: str, duration: int):
         _pl = self.players[player_qq]
@@ -655,12 +658,15 @@ class Game:
                     self.add_attribute(player_qq, 'defense', -10)
                 elif status == 'hema':
                     self.add_attribute(player_qq, 'attack', 15)
+                elif status == 'binary':
+                    _pl.character.hidden_status[status][2] = round(0.04 * _pl.character.armor)
+                    self.add_attribute(player_qq, 'attack', _pl.character.hidden_status[status][2])
         else:
             pass
 
     def remove_hidden_status(self, player_qq: str, status: str):
         _pl = self.players[player_qq]
-        _pl.character.hidden_status.pop(status)
+
         if status == 'hero_legend':
             self.add_attribute(player_qq, 'attack', -10)
         elif status == 'dream_shelter':
@@ -670,6 +676,10 @@ class Game:
             self.add_attribute(player_qq, 'defense', 10)
         elif status == 'hema':
             self.add_attribute(player_qq, 'attack', -15)
+        elif status == 'binary':
+            self.add_attribute(player_qq, 'attack', -_pl.character.hidden_status[status][2])
+
+        _pl.character.hidden_status.pop(status)
 
     def recall(self, card: str):
         self.discard.append(card)
@@ -1078,6 +1088,16 @@ class Game:
                     _pl.character.hp = 1
                     self.add_hidden_status(player_qq, 'dont_forget_me', 2)
                     _ret += f'不要忘记恋慕……\n'
+            elif trait == MAP['binary'] and _pl.character.id == MAP['k97']:
+                if self.round % 2 == 0:
+                    _arm_point = round(_pl.character.hp / 2)
+                    self.add_attribute(player_qq, 'health', -_arm_point)
+                    self.add_attribute(player_qq, 'armor', _arm_point)
+                    self.add_hidden_status(player_qq, 'binary', 1)
+                else:
+                    _arm_point = _pl.character.armor
+                    self.add_attribute(player_qq, 'health', _arm_point)
+                    self.add_attribute(player_qq, 'armor', -_arm_point)
             elif trait == MAP['icy_blood'] and _pl.character.id == MAP['shigure']:
                 self.add_hidden_status(player_qq, 'ice_immunity', 1)
             elif trait == MAP['arctic_seal'] and _pl.character.id == MAP['shigure']:
@@ -1104,7 +1124,7 @@ class Game:
                 _mp_cost += 1
                 if _pl.character.move_point < _mp_cost:
                     _ret += '你的行动点不足哦\n'
-                elif _pl.has_hidden_status(' '):
+                elif _pl.has_status(MAP['weakness']):
                     _ret += '你处于虚弱状态，无法布置律令哦\n'
                 elif (_tg.has_hidden_status('decree1') and extra[0] == '禁空' or _tg.has_hidden_status('decree2')
                       and extra[0] == '天锁' or _tg.has_hidden_status('decree3') and extra[0] == '封魔'
@@ -1243,6 +1263,8 @@ class Game:
         if _player.has_hidden_status('hema0'): # 飖【血灵斩】特质
             self.add_hidden_status(player_qq, 'hema', 1)
             self.remove_hidden_status(player_qq, 'hema0')
+        if _player.character.id == MAP['k97']: # K97【二进制】特质
+            self.play_trait(player_qq, trait=MAP['binary'])
         if _player.has_status(MAP['stellar_cage']) or _player.has_status(MAP['gugu']): # 【星牢】【咕咕】状态
             self.end_turn()
         else:

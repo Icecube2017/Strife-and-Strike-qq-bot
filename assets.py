@@ -187,6 +187,21 @@ def __get_tag_list() -> Dict[str, list]:
 
 TAG = __get_tag_list()
 
+def __get_status_list() -> Dict[str, list]:
+    _val = __get_file("status", "txt").split(sep="\n")
+    _dct: dict = {}
+    for v in _val:
+        v2 = v.split(sep=",")
+        _dct[MAP[v2[0]]] = []
+        for u in v2:
+            try:
+                _dct[MAP[v2[0]]].append(int(u))
+            except ValueError:
+                _dct[MAP[v2[0]]].append(u)
+        _dct[MAP[v2[0]]].pop(0)
+    return _dct
+
+STATUS = __get_status_list()
 
 def search_alias(word: str):
     def part_same(part: str, whole: str):
