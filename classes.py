@@ -63,7 +63,7 @@ class Character:
 
         self.status: Dict[str, List[int]] = {}  # 角色状态，存储状态名和持续时间
         self.status_layers: Dict[str, int] = {} # 存储可堆叠状态的层数
-        self.hidden_status: Dict[str, List[int]] = {} # 一些未写明是状态，但实际上依靠状态实现的效果
+        self.hidden_status: Dict[str, List] = {} # 一些未写明是状态，但实际上依靠状态实现的效果
 
         #self.extra: List = [] # 储存额外数据 已弃用，改为用
         # hidden_status存放
@@ -713,6 +713,13 @@ class Game:
             return "你的行动点不足哦"
         if not 'fission' in _pl.character.hidden_status and len(target_qq_list) > 1:
             return "你不能同时攻击多个玩家哦"
+        if _pl.has_hidden_status('deconstruct'):
+            if cards:
+                self.remove_hidden_status(player_qq, 'deconstruct')
+                return "你不能使用别的牌哦"
+            cards.append(_pl.character.hidden_status['deconstruct'][2])
+            self.add_card(player_qq, _pl.character.hidden_status['deconstruct'][2])
+            self.remove_hidden_status(player_qq, 'deconstruct')
         _ret = ''
         target_qq = target_qq_list[0]
         _tg = self.players[target_qq]
@@ -750,6 +757,7 @@ class Game:
                 _ret += f'{_pl.character.id} 对 {_tg2.character.id} 使用了 {card_str}！\n'
                 self.action_stack[0].is_fission = True
                 self.action_stack[0].fission_target = _tg2
+
             _extra_ind = 0
             for _c in cards:
                 self.remove_card(player_qq, _c) # 玩家手牌移除卡牌
@@ -864,6 +872,8 @@ class Game:
                     elif _c == MAP['hologram']:
                         _skill = self.choose_skill(player_qq)
                         _pl.skill_status[_skill] = 2
+                        if _pl.character.id == MAP['dr_min']:
+                            self.play_trait(player_qq, trait=MAP['mapping'], extra=[1])
                         self.action_stack[0].is_void = True
                     elif _c == MAP['pyrotheum']:
                         self.add_status(target_qq, MAP['flaming'], 3)
@@ -940,6 +950,8 @@ class Game:
                 self.remove_hidden_status(player_qq, 'bow')
                 _pl.clear_hand()
             if not self.action_stack[0].is_void: # 若未使用不造成伤害的道具，则投掷骰子
+                if _pl.character.id == MAP['dr_min']:
+                    self.play_trait(player_qq, trait=MAP['mapping'], extra=[0])
                 _act_dice = self.dice(player_qq, self.action_stack[0].dice_size, 1)
                 self.action_stack[0].dice_point = _act_dice
                 _ret += f'命运的骰子显现了结果，朝上的点数是 {_act_dice} ！\n'
@@ -956,6 +968,9 @@ class Game:
         if  _pl.has_status(MAP['silence']):
             skill_able = False
             _ret += '静默状态下不能使用技能哦\n'
+        if skill == MAP['deconstruction'] and assets.match_alias(extra[0]) == 'none':
+            skill_able = False
+            _ret += '投影的卡牌不存在哦\n'
         if skill_able:
             if skill != MAP['massacre']:
                 self.skill_stack.append(Action(_tg, _pl, name=skill, action_type='skill'))
@@ -965,6 +980,9 @@ class Game:
                     self.add_hidden_status(player_qq, 'bene_type1', 1)
                 if extra[0] == '2':
                     self.add_hidden_status(player_qq, 'bene_type2', 1)
+            elif skill == MAP['reticence']:
+                if _tg.has_hidden_status('deconstruct'):
+                    self.remove_hidden_status(target_qq_list[0], 'deconstruct')
             elif skill == MAP['fission']:
                 self.add_hidden_status(player_qq, 'fission', 1)
             elif skill == MAP['massacre']:
@@ -972,6 +990,10 @@ class Game:
                 self.action_stack.append(Action(_pl, _pl, action_type='heal', damage_point=100))
                 if not _pl.has_hidden_status('extra'):
                    self.add_hidden_status(player_qq, 'extra', 1)
+            elif skill == MAP['deconstruction']:
+                self.add_hidden_status(player_qq, 'deconstruct', 1)
+                _std_c = assets.match_alias(extra[0])
+                _pl.character.hidden_status['deconstruct'].insert(2, _std_c)
             _tgs_c_id = ''
             for _tgs in target_qq_list:
                 _tgs_c_id += (self.players[_tgs].character.id + ' ')
@@ -1098,6 +1120,16 @@ class Game:
                     _arm_point = _pl.character.armor
                     self.add_attribute(player_qq, 'health', _arm_point)
                     self.add_attribute(player_qq, 'armor', -_arm_point)
+            elif trait == MAP['rondo'] and _pl.character.id == MAP['andrenin']:
+                if extra[0] <= 120:
+                    self.add_status(player_qq, MAP['dodge'], -1)
+            elif trait == MAP['mapping'] and _pl.character.id == MAP['dr_min']:
+                if extra[0] == 0:
+                    if self.action_stack[0].dice_size < 6:
+                        self.action_stack[0].dice_size = 6
+                elif extra[0] == 1:
+                    _skill = self.choose_skill(player_qq)
+                    _pl.skill_status[_skill] = 2
             elif trait == MAP['icy_blood'] and _pl.character.id == MAP['shigure']:
                 self.add_hidden_status(player_qq, 'ice_immunity', 1)
             elif trait == MAP['arctic_seal'] and _pl.character.id == MAP['shigure']:
@@ -1316,7 +1348,8 @@ class Game:
             if action.source.has_hidden_status('benevolent') and action.damage_point >= 100: # 【仁慈】技能
                 action.is_void = True
                 if action.source.has_hidden_status('bene_type1'):
-                    self.action_stack.append(Action(action.source, action.source, action_type='heal', damage_point=int(0.2 * action.source.character.max_hp)))
+                    self.action_stack.append(Action(action.source, action.source, action_type='heal',
+                                                    damage_point=int(0.2 * action.source.character.max_hp)))
                 if action.source.has_hidden_status('bene_type2'):
                     self.draw(action.source.qq, 2)
                 self.remove_hidden_status(action.source.qq, 'benevolent')
@@ -1354,7 +1387,6 @@ class Game:
                     action.dice_point += 1
                 if action.source.has_hidden_status('destiny2'):
                     action.dice_point += 2
-
                 if action.target.character.id == MAP['shigure']:  # 时雨【寒冰血脉】特质
                     self.play_trait(action.target.qq, trait=MAP['icy_blood'])
                     if action.target.has_hidden_status('ice_immunity'):
@@ -1370,6 +1402,8 @@ class Game:
                                              action.target.character.status[MAP['soul_flare']][2], is_penetrate=True))
                 action.set_damage_point(action.calculate())
 
+                if action.source.character.id == MAP['andrenin']: # 安德宁【回旋曲】特质
+                    self.play_trait(action.source.qq, trait=MAP['rondo'], extra=[action.damage_point])
                 if action.source.character.id == MAP['yun']:  # 云云子【晨昏寥落】特质
                     self.play_trait(action.source.qq, trait=MAP['dusk_void'])
                     if action.source.has_hidden_status('dusk'):

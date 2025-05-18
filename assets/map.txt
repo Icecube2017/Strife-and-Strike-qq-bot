@@ -119,9 +119,9 @@ demonic_avatar,天魔体
 hema_slash,血灵斩
 dont_forget_me,勿忘我
 binary,二进制
-回旋曲
+rondo,回旋曲
 大预言
-映射
+mapping,映射
 幽魂化
 希冀
 arctic_seal,天霜封印
